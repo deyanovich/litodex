@@ -40,7 +40,8 @@ The `lit` CLI talks to Git for content operations and to the bibliotheca server 
 - **Manuscripts are first-class** — `ms/` stemmata alongside editions
 - **Sources are sacred** — every change must be traceable to a verifiable source
 - **Consensus-driven** — public editions emerge from community agreement, not maintainer fiat
-- **Permanent identifiers** — every snapshot gets a citable LID
+- **Deterministic content-derived identifiers** — every .lit file has a hash-derived LITID
+- **Citable references** - every version gets a CID - a human-friendly ISBN-like reference (e.g., `grc/homer/iliad/oxford-1920/20260101`)
 - **Lightweight markup** — Litogramma annotations make parsing trivial
 - **Federated by design** — no central control, multiple sovereign nodes
 
@@ -100,11 +101,11 @@ graph TB
 
 ### Tier Definitions
 
-| Tier | Type | Acts Enabled? | Can Issue LIDs? | Primary Function |
+| Tier | Type | Acts Enabled? | Can Issue CIDs? | Primary Function |
 |------|------|---------------|-----------------|------------------|
 | 1 | Operational | ✅ YES | ❌ NO | Create content, build consensus |
-| 2 | National | ❌ NO | ✅ YES | Validate, preserve, issue national LIDs |
-| 3 | International | ❌ NO | ✅ YES | Sync, detect conflicts, confirm global LIDs |
+| 2 | National | ❌ NO | ✅ YES | Validate, preserve, issue national CIDs |
+| 3 | International | ❌ NO | ✅ YES | Sync, detect conflicts, confirm global CIDs |
 
 #### Key Insight
 **Tier 2 and Tier 3 run the exact same software** — just with different configurations and peer relationships. The only difference is what they peer with.
@@ -127,7 +128,7 @@ graph TB
 - Can host both public and private works
 - Responsible for their own authentication
 - Must peer with their national bibliotheca (but can also peer with others)
-- **Cannot issue LIDs** — must request them from Tier 2
+- **Cannot issue CIDs** — must request them from Tier 2
 
 ### Example Workflow
 
@@ -148,7 +149,7 @@ $ lit converge prop/iliad-sorbonne-xkm --into=ed/iliad-sorbonne
 # When ready, push to national level
 $ lit push national --to=bibliotheca.fr
 Pushing ed/iliad-sorbonne/20250304 to national bibliotheca...
-Requesting LID from bibliotheca.fr...
+Requesting CID from bibliotheca.fr...
 ```
 
 Each bibliotheca chooses its own consensus model. The `[consensus]` block in the
@@ -182,14 +183,14 @@ fits their scholarly community.
 **What they do:**
 - **Receive** converged stemmata from Tier 1 institutions
 - **Validate** that submissions meet national scholarly standards
-- **Issue national LIDs** (e.g., `fr.2026.0042`)
+- **Issue national CIDs** (e.g., `fr.2026.0042`)
 - **Host** national editions for long-term preservation
 - **Never create content directly** — only receive from Tier 1
 - **Sync metadata** with the international bibliotheca
 
 ### Technical Capabilities
 - **Acts are disabled** — no direct commits
-- **LID issuance is enabled** — can create permanent identifiers
+- **CID issuance is enabled** — can create permanent identifiers
 - **Sync with Tier 1** (institutional bibliothecae)
 - **Sync with Tier 3** (international bibliotheca)
 - Maintains provenance of all received works
@@ -205,7 +206,7 @@ tier = 2
 
 [capabilities]
 acts_enabled = false  # Cannot create content
-lid_issuance = true    # Can issue national LIDs
+cid_issuance = true    # Can issue national CIDs
 sync_enabled = true    # Can sync with peers
 
 [peers]
@@ -220,7 +221,7 @@ tier1 = [
 tier3 = "https://litodex.org"
 
 [lid]
-# National LID namespace
+# National CID namespace
 namespace = "fr"
 pattern = "{namespace}.{year}.{sequential}"  # e.g., fr.2026.0001
 
@@ -283,16 +284,16 @@ tier3 = "https://litodex.org"
 **Who:** A lightweight coordinating body — the global registry
 
 **What they do:**
-- **Maintain the global LID registry** (which works exist, their canonical names)
+- **Maintain the global CID registry** (which works exist, their canonical names)
 - **Sync metadata** across all national bibliothecae
-- **Detect identifier conflicts** when two nations use the same LID for different works
+- **Detect identifier conflicts** when two nations use the same CID for different works
 - **Never store content** — only metadata and pointers
 - **Never exercise power** — conflicts are returned to the nations involved
-- **Confirm global LIDs** after checking for conflicts
+- **Confirm global CIDs** after checking for conflicts
 
 ### Technical Capabilities
 - **Acts are disabled** — no content, ever
-- **LID issuance is enabled** — confirms global identifiers
+- **CID issuance is enabled** — confirms global identifiers
 - **Sync with all Tier 2** bibliothecae
 - **Conflict detection** (automatic)
 - **Conflict resolution** (human-mediated, never automatic)
@@ -308,7 +309,7 @@ tier = 3
 
 [capabilities]
 acts_enabled = false     # Cannot create content
-lid_issuance = true      # Can confirm global LIDs
+cid_issuance = true      # Can confirm global CIDs
 sync_enabled = true      # Sync with all Tier 2
 
 [peers]
@@ -346,7 +347,7 @@ The full registry data model — including `national_instances`, `archived_insta
 
 ---
 
-## The LID Issuance Flow
+## The CID Issuance Flow
 
 ```mermaid
 sequenceDiagram
@@ -362,17 +363,17 @@ sequenceDiagram
     Sorbonne->>FR: Push for national registration
     
     FR->>FR: Validate work is new to France
-    FR->>FR: Issue national LID: fr.2026.0042
+    FR->>FR: Issue national CID: fr.2026.0042
     
-    FR->>INT: Check if global LID exists
+    FR->>INT: Check if global CID exists
     INT->>INT: Query registry
     INT-->>FR: No conflict, grc/homer-iliad available
     
     FR->>INT: Register fr.2026.0042 as instance of grc/homer-iliad
-    INT->>INT: Create/confirm global LID: grc/homer-iliad
+    INT->>INT: Create/confirm global CID: grc/homer-iliad
     INT->>INT: Link: grc/homer-iliad ↔ fr.2026.0042
     
-    INT-->>FR: Global LID confirmed
+    INT-->>FR: Global CID confirmed
     FR-->>Sorbonne: Registration complete
     Sorbonne-->>Scholar: Your work is now: grc/homer-iliad
     Note over Scholar: Can now cite permanently
@@ -391,11 +392,11 @@ The conflict-detection logic is implemented in `meta.litodex.org`. See [The Lito
 ### Real Conflict Example
 
 ```bash
-# Two nations try to register the same LID simultaneously
+# Two nations try to register the same CID simultaneously
 $ litodex.org/logs/2026-03-04.log
 
 10:32:15 [CONFLICT] Detected simultaneous reservation
-  LID: "san/buddha-charita"
+  CID: "san/buddha-charita"
   
   Reservation 1: bibliotheca.in (India)
     Work: "Life of Buddha by Ashvaghosha"
@@ -409,14 +410,14 @@ $ litodex.org/logs/2026-03-04.log
 
 10:32:16 [ACTION] Notified both parties
   To: bibliotheca.in, bibliotheca.cn
-  Subject: LID conflict: san/buddha-charita
+  Subject: CID conflict: san/buddha-charita
   
-  "Both of you have reserved this LID for what appear to be
+  "Both of you have reserved this CID for what appear to be
   different works. Please communicate and decide among yourselves:
   
-  - One of you keeps the LID, the other chooses a different one
-  - You agree to share the LID with clear attribution
-  - You request hierarchical LIDs (e.g., san/buddha-charita/indian)
+  - One of you keeps the CID, the other chooses a different one
+  - You agree to share the CID with clear attribution
+  - You request hierarchical CIDs (e.g., san/buddha-charita/indian)
   
   litodex.org has no opinion. We await your consensus."
 
@@ -424,7 +425,7 @@ $ litodex.org/logs/2026-03-04.log
   "We have agreed:
    - bibliotheca.in will use san/buddha-charita for the Sanskrit version
    - bibliotheca.cn will use san/buddha-charita-chinese for the Chinese canon version
-   - Both LIDs will cross-reference each other in metadata"
+   - Both CIDs will cross-reference each other in metadata"
   
   Registry updated.
 ```
@@ -956,19 +957,19 @@ Validation in progress...
 ✓ Sources verified (12/12)
 ✓ Consensus documented
 
-Issued national LID: fr.2026.0042
+Issued national CID: fr.2026.0042
 Checking global registry...
-Global LID confirmed: grc/homer-iliad
+Global CID confirmed: grc/homer-iliad
 
 Your edition is now permanently citable as:
   https://bibliotheca.fr/grc/homer-iliad/ed/oxford/20250304
-  Global LID: grc/homer-iliad
+  Global CID: grc/homer-iliad
 ```
 
-### Resolving LIDs
+### Resolving CIDs
 
 ```bash
-# Resolve a global LID
+# Resolve a global CID
 $ lit resolve grc/homer-iliad
 Found 3 national instances:
 
@@ -984,11 +985,11 @@ Found 3 national instances:
    URL: https://bibliotheca.gr/grc/homer-iliad
    Editions: athens-academy-20250301
 
-# Resolve a national LID  
+# Resolve a national CID  
 $ lit resolve fr.2026.0042
-National LID: fr.2026.0042
+National CID: fr.2026.0042
 Issued by: bibliotheca.fr
-Global LID: grc/homer-iliad
+Global CID: grc/homer-iliad
 Editions:
   - https://bibliotheca.sorbonne.fr/grc/homer-iliad/ed/sorbonne/20250304
   - https://bibliotheca.cnrs.fr/grc/homer-iliad/ed/cnrs/20250301
@@ -1003,8 +1004,8 @@ Litodex provides the verified texts; Litogram provides the practice:
 ```typescript
 // litogram.org backend
 async function getText(lid: string) {
-    // Resolve LID through federation
-    const instances = await resolveLID(lid);
+    // Resolve CID through federation
+    const instances = await resolveCID(lid);
     
     // Prefer national instance or let user choose
     const selected = await selectInstance(instances);
@@ -1029,7 +1030,7 @@ async function getText(lid: string) {
 ### For Scholars
 - Work at your institution with local authentication
 - National validation ensures quality
-- Global discovery through LIDs
+- Global discovery through CIDs
 - Complete provenance tracking
 
 ### For Institutions
@@ -1056,10 +1057,10 @@ Litodex is not a single website or service — it's a family of distinct service
 
 ### The Three International Services
 
-| Service | Domain | Purpose | Content | Acts | LIDs |
+| Service | Domain | Purpose | Content | Acts | CIDs |
 |---------|--------|---------|---------|------|------|
 | **Documentation** | `www.litodex.org` | Explain the system, host specs, link to resources | No | No | No |
-| **Metadata Registry** | `meta.litodex.org` | Global LID registry, discovery, conflict detection | No | No | Yes |
+| **Metadata Registry** | `meta.litodex.org` | Global CID registry, discovery, conflict detection | No | No | Yes |
 | **Content Archive** | `arch.litodex.org` | Optional mirror of public domain texts | Yes (PD only) | No | No |
 
 #### 1. www.litodex.org — The Documentation Hub
@@ -1114,7 +1115,7 @@ The human-facing presence. Pure information, no data.
 
 **What it NEVER does:**
 - Store or serve any text content
-- Issue or resolve LIDs
+- Issue or resolve CIDs
 - Get involved in disputes
 
 ---
@@ -1172,7 +1173,7 @@ $ curl https://meta.litodex.org/v1/registry/grc/homer-iliad
 ```
 
 **What it does:**
-- Maintains the global registry of LIDs
+- Maintains the global registry of CIDs
 - Syncs metadata from all national bibliothecae
 - Detects identifier conflicts (and only detects — never resolves)
 - Provides a discovery API for users and tools
@@ -1190,20 +1191,20 @@ $ curl https://meta.litodex.org/v1/registry/grc/homer-iliad
 # meta.litodex.org's core logic
 class GlobalRegistry:
     def __init__(self):
-        self.lids = {}  # global LID → list of national instances
+        self.lids = {}  # global CID → list of national instances
     
     def check_conflict(self, global_lid, requesting_nation):
-        """Check if a global LID is available"""
+        """Check if a global CID is available"""
         if global_lid in self.lids:
             return {
                 "status": "exists",
                 "instances": self.lids[global_lid],
-                "message": "This LID is already registered. See existing instances."
+                "message": "This CID is already registered. See existing instances."
             }
         return {"status": "available"}
     
     def register(self, global_lid, national_instance):
-        """Register a national instance under a global LID"""
+        """Register a national instance under a global CID"""
         if global_lid not in self.lids:
             self.lids[global_lid] = []
         self.lids[global_lid].append(national_instance)
