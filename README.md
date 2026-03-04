@@ -4,10 +4,11 @@ Litodex is a platform for version-controlled, verified, and collaborative manage
 
 ## Core Philosophy
 
-- **One work = one repository** — not per edition, not per user
-- **Editions = stemmata** — multiple authoritative versions coexist
+- **One work = one codex** — not per edition, not per user
+- **Stemmata = traditions** — multiple authoritative versions coexist as branches
 - **No single master** — scholarship has no single source of truth
 - **Manuscripts are first-class** — `ms/` stemmata alongside editions
+- **Consensus-driven** — public editions emerge from community agreement, not maintainer fiat
 - **Permanent identifiers** — every snapshot gets a citable LID
 - **Lightweight markup** — Litogramma annotations make parsing trivial
 
@@ -16,18 +17,55 @@ Litodex is a platform for version-controlled, verified, and collaborative manage
 | Git | Litodex (Formal) | Litodex Alias | When to Use |
 |-----|------------------|---------------|-------------|
 | **repository** | codex | (none) | `lit codex init`, `lit codex list` |
-| **branch** | stemma | `sm` | Daily work: `lit sm list`, `lit sm checkout` |
-| **tag** | versio | `ver` | `lit ver create`, `lit ver list` |
-| **commit** | actum | `act` | `lit act -m "message"`, `lit act show` |
-| **log** | historia | `hist` | `lit hist`, `lit hist --stem=ed/oxford-1920` |
-| **diff** | delta | (none) | `lit delta ver/1.0.0 ver/1.0.1` |
-| **status** | status | `st` | `lit st` |
+| **root branch** | radix | (none) | Special stemma with `meta.toml` |
+| **branch** | stemma | `sm` | Any textual tradition |
+| **tag** | versio | `ver` | Frozen snapshot with date |
+| **commit** | actum | `act` | Recorded change |
+| **log** | historia | `hist` | History of acts |
+| **diff** | delta | `delta` | Difference (Δ) |
+| **status** | status | `st` | Current state |
 
-### Why This Pattern
+## Roles
 
-- **Full words** for rare commands (`codex`, `delta`) — no alias needed
-- **Short aliases** for daily commands (`sm`, `ver`, `act`, `hist`, `st`) — speed where it matters
-- **Aliases are mnemonic** — `sm` = stemma, `ver` = versio, `act` = actum, `hist` = historia, `st` = status
+| Role | Latin | Responsibility | Alias |
+|------|-------|----------------|-------|
+| **Curator** | *curator* | Maintains radix stemma (metadata) | `cur` |
+| **Custos** | *custos* | Facilitates consensus for a public stemma | `cus` |
+
+### Curator
+
+The curator maintains the **radix** — the root stemma containing only `meta.toml`. This role is about preserving the work's identity, not controlling content.
+
+```bash
+$ lit cur list
+Curatores for grc/homer-iliad:
+  @smith (since 2026-01-15)
+  @jones (since 2026-02-20)
+
+$ lit cur add @patel
+Added @patel as curator. They can now maintain radix.
+```
+
+### Custos
+
+The **custos** (plural: **custodes**) does not decide — they **serve the consensus**. Their role is to facilitate discussion, monitor proposals, and execute merges when the community reaches agreement.
+
+```bash
+$ lit cus list
+Custodes for grc/homer-iliad:
+  @oxford_editor   → ed/iliad-oxford
+  @teubner_editor  → ed/iliad-teubner
+  @manuscript_scholar → ms/venetus-a
+
+$ lit cus add @cambridge_editor --stemma=ed/iliad-cambridge
+Added @cambridge_editor as custos of ed/iliad-cambridge.
+```
+
+A custos:
+- Does not have unilateral merge authority
+- Cannot override community consensus
+- Facilitates discussion and voting
+- Executes merges only when consensus thresholds are met
 
 ## Repository Structure
 
@@ -43,12 +81,12 @@ Example: `grc/homer-iliad`
 
 | Prefix | Latin | Purpose | Protection |
 |--------|-------|---------|------------|
-| `radix` | *radix* | Work metadata (single file) | 🔒 Owner only |
-| `ed/` | *editio* | Public authoritative editions | 🔒 Maintainers |
-| `ms/` | *manuscriptum* | Source manuscripts | 🔒 Curators |
+| `radix` | *radix* | Root stemma with `meta.toml` | 🔒 Curators only |
+| `ed/` | *editio* | Published editions (consensus-based) | 🔒 Custos-facilitated |
+| `ms/` | *manuscriptum* | Historical manuscript transcriptions | 🔒 Custos-facilitated |
+| `prop/` | *propositum* | Proposals for changes | ❌ Anyone |
+| `priv/` | *privatus* | Personal workspace | ❌ Owner only |
 | `collab/` | *collaboratio* | Group projects | 🔒 Team |
-| `priv/` | *privatus* | Personal workspace | ❌ Owner |
-| `prop/` | *propositum* | Proposed changes | ❌ Anyone |
 | `rev/` | *recensio* | Review stemmata | ⚠️ Temporary |
 | `arch/` | *archivum* | Archived stemmata | 🔒 Read-only |
 
@@ -70,65 +108,225 @@ description = "Ancient Greek epic poem"
 license = "public-domain"
 ```
 
-This stemma is created at initialization and never deleted. It establishes the work's identity independent of any content stemma.
+The radix is:
+- Created at initialization, never deleted
+- Only editable by curators
+- Automatically merged into all other stemmata when changed
+- The source of truth for work identity
 
-## Litogramma Markup
+```bash
+$ lit sm show radix
+Stemma: radix (PROTECTED)
+Type: root stemma
+Curators: @smith, @jones
+Contains: meta.toml only
+Acts: 3 (last: a1b2c3d "Updated description")
+Auto-merges to: all stemmata
+```
 
-Texts use lightweight, human-readable annotations:
+## Public Stemmata: `ed/` and `ms/`
+
+### Definition
+
+| Stemma | Purpose | Example |
+|--------|---------|---------|
+| `ed/` | Published editions representing scholarly consensus | `ed/iliad-oxford` |
+| `ms/` | Diplomatic transcriptions of historical manuscripts | `ms/venetus-a` |
+
+Both follow the **same consensus-based workflow**. Neither exists until the community creates them through proposals.
+
+### The Proposal System
+
+Proposals use random 3-letter IDs to avoid implying priority or order:
 
 ```
-## Venetus A manuscript
-
-μῆνιν ἄειδε θεὰ Πηληϊάδεω Ἀχιλῆος οὐλομένην,   // 1.1
-ἣ μυρί᾽ Ἀχαιοῖς ἄλγε᾽ ἔθηκε,                    // 1.2
-πολλὰς δ᾽ ἰφθίμους ψυχὰς Ἄϊδι προΐαψεν         // 1.3
+prop/{target-stemma-name}-{random-id}
 ```
 
-- `##` — Headers (metadata, section breaks)
-- `// ref` — Line-level canonical references
-- Blank lines — Paragraph breaks
+Examples:
+- `prop/iliad-oxford-xkm`
+- `prop/iliad-oxford-jqr`
+- `prop/venetus-a-plm`
 
-This makes parsing trivial and eliminates heuristics.
+The random ID (consonant-vowel-consonant) ensures no proposal appears "first" or "more important."
+
+## The Consensus Workflow
+
+### Phase 1: No Public Stemma Exists
+
+Initially, only `radix`, manuscripts (`ms/`), and personal stemmata exist:
+
+```bash
+$ lit sm list
+grc/homer-iliad:
+  radix
+  ms/venetus-a
+  ms/townley
+  priv/smith-notes
+  priv/jones-collation
+  prop/iliad-oxford-xkm   (proposed Oxford edition)
+  prop/iliad-oxford-jqr   (another proposal)
+  prop/iliad-oxford-plm   (yet another)
+```
+
+### Phase 2: Proposals Are Created
+
+Scholars create proposal stemmata for changes they want to see:
+
+```bash
+# Scholar creates a proposal for a new Oxford edition
+$ lit sm create prop/iliad-oxford-xkm --from=ms/venetus-a
+$ vim iliad.txt
+$ lit act -m "Base text from Venetus A with corrections"
+$ lit push origin prop/iliad-oxford-xkm
+
+# Open for discussion
+$ lit prop open prop/iliad-oxford-xkm --target=ed/iliad-oxford
+Proposal opened. Target: ed/iliad-oxford (not yet created)
+```
+
+### Phase 3: Community Discussion and Voting
+
+Scholars discuss, provide evidence, and vote:
+
+```bash
+$ lit prop vote prop/iliad-oxford-xkm --approve --reason="Matches manuscript evidence"
+$ lit prop comment prop/iliad-oxford-xkm -m "See attached image of Venetus A folio 47r"
+
+$ lit prop vote prop/iliad-oxford-jqr --reject --reason="Needs stronger evidence"
+```
+
+The custos monitors consensus:
+
+```bash
+$ lit consensus check prop/iliad-oxford-xkm
+Proposal: prop/iliad-oxford-xkm
+Target: ed/iliad-oxford
+Consensus: 78% approve (exceeds 70% threshold)
+Votes: 14 approve, 3 reject, 2 abstain
+Blocking objections: 1 (resolved)
+Ready to merge.
+```
+
+### Phase 4: Custos Executes Consensus
+
+When consensus is reached, the custos merges:
+
+```bash
+$ lit prop merge prop/iliad-oxford-xkm
+Merging prop/iliad-oxford-xkm into ed/iliad-oxford
+Consensus confirmed: 78% approve (exceeds 70% threshold)
+Creating ed/iliad-oxford...
+Merged.
+
+# A versio is automatically created with date suffix
+$ lit ver list
+ed/iliad-oxford/20250304   (first edition, includes xkm changes)
+```
+
+The new public stemma now exists.
+
+### Phase 5: Subsequent Corrections
+
+Later, another scholar proposes a correction:
+
+```bash
+$ lit sm create prop/iliad-oxford-tyr --from=ed/iliad-oxford/20250304
+$ vim iliad.txt  # fix line 102
+$ lit act -m "Corrected accent in line 102"
+$ lit prop open prop/iliad-oxford-tyr --target=ed/iliad-oxford
+
+# Discussion, voting, consensus...
+$ lit prop merge prop/iliad-oxford-tyr
+Merged. New versio: ed/iliad-oxford/20250315
+```
+
+Each merge creates a new versio with the date of merge.
+
+### The Versio Timeline
+
+```bash
+$ lit ver list --stemma=ed/iliad-oxford
+ed/iliad-oxford/20250304   (initial consensus edition)
+ed/iliad-oxford/20250315   (correction to line 102)
+ed/iliad-oxford/20250401   (added apparatus from jqr proposal)
+ed/iliad-oxford/20250420   (further corrections)
+```
+
+Each versio is a frozen snapshot of community consensus at that point in time, permanently citable.
+
+## The Custos Dashboard
+
+```bash
+$ lit custos dashboard --stemma=ed/iliad-oxford
+Custos dashboard for ed/iliad-oxford
+
+Current version: ed/iliad-oxford/20250401
+
+Open proposals:
+  prop/iliad-oxford-tyr (92% approve) → ready to merge
+  prop/iliad-oxford-wlm (63% approve) → needs discussion
+  prop/iliad-oxford-zab (41% approve) → weak support
+
+Recent merges:
+  2025-04-01: merged prop/iliad-oxford-jqr (apparatus)
+  2025-03-15: merged prop/iliad-oxford-tyr (line 102)
+  2025-03-04: created ed/iliad-oxford from 3 proposals
+
+Consensus threshold: 70% approve, <10% blocking反对
+```
+
+## The Radix Auto-Merge
+
+When curators update the radix:
+
+```bash
+$ lit sm checkout radix
+$ vim meta.toml
+$ lit act -m "Updated license to CC-BY"
+
+# Automatically merges to ALL stemmata
+$ lit act show a1b2c3d
+Actum: a1b2c3d
+Stemma: radix
+Message: "Updated license to CC-BY"
+
+Auto-merged to:
+  ✓ ed/iliad-oxford (merge act e4f5g6h)
+  ✓ ed/iliad-teubner (merge act i7j8k9l)
+  ✓ ms/venetus-a (merge act m0n1o2p)
+  ✓ priv/smith-experimental (merge act q3r4s5t)
+  ✓ ...
+```
+
+Metadata flows to all traditions automatically.
 
 ## Permanent Identifiers (LIDs)
 
-Every important snapshot gets a **Litodex Identifier** — a permanent, citable URL.
-
-### Format
+Every versio gets a permanent, citable Litodex Identifier:
 
 ```
 {lang}/{author}/{work}/{stemma}/{date}
 ```
 
-Example: `grc/homer/iliad/ed/oxford-1920/20250101`
+Example: `grc/homer/iliad/ed/oxford-1920/20250304`
 
-### Resolution
-
+Resolution:
 ```
-https://lid.litodex.org/grc/homer/iliad/ed/oxford-1920/20250101
-```
-
-Redirects to the exact actum snapshot. LIDs are stored as Git tags:
-
-```
-refs/tags/lid/grc/homer/iliad/ed/oxford-1920/20250101
+https://lid.litodex.org/grc/homer/iliad/ed/oxford-1920/20250304
 ```
 
-### Creating a LID
-
-```bash
-$ lit versio create --date=2025-01-01
-LID: grc/homer/iliad/ed/oxford-1920/20250101
-Permanent snapshot created.
-```
+LIDs are stored as Git tags in `refs/tags/lid/` and are immutable.
 
 ## The `lit` CLI
 
-### Codex Operations (Rare)
+### Codex Operations
 
 ```bash
 # Initialize a new codex
 $ lit codex init grc/homer-iliad --author="Homer" --title="Iliad"
+Created codex grc/homer-iliad
+  radix stemma initialized with meta.toml
 
 # List all codices
 $ lit codex list
@@ -137,19 +335,19 @@ $ lit codex list
 $ lit codex show
 ```
 
-### Daily Work (With Aliases)
+### Daily Work
 
 ```bash
 # List stemmata
 $ lit sm list
 stemmata in grc/homer-iliad:
-  ed/oxford-1920 (protected)
-  ed/teubner-1898 (protected)
-  ms/venetus-a (protected)
+  radix
+  ms/venetus-a
   priv/smith-experimental
+  prop/iliad-oxford-xkm
 
-# Create new stemma
-$ lit sm create priv/smith-experimental --from=ed/oxford-1920
+# Create private stemma
+$ lit sm create priv/smith-experimental --from=ms/venetus-a
 
 # Switch stemma
 $ lit sm checkout priv/smith-experimental
@@ -160,62 +358,71 @@ Stemma: priv/smith-experimental
 Status: 1 unstaged change
 
 # Commit changes
-$ lit act -m "Correxi errorem in linea 47"
+$ lit act -m "Collated lines 1-50"
 
 # View history
 $ lit hist
-a1b2c3d 2026-03-04 "Correxi errorem in linea 47"
-e4f5g6h 2026-03-03 "Added apparatus to Book 1"
-
-# Compare versions
-$ lit delta ver/1.0.0 ver/1.0.1 --verse=1.47
-Δ at line 47:
-  ver/1.0.0: Ἀχιλῆος
-  ver/1.0.1: Ἀχιλλέως
-
-# Create a versio (frozen snapshot)
-$ lit ver create ver/1.0.0
+a1b2c3d 2026-03-04 "Collated lines 1-50"
+e4f5g6h 2026-03-03 "Initial copy from Venetus A"
 ```
 
-### Proposing Changes
+### Proposal Workflow
 
 ```bash
-# Create proposal stemma
-$ lit sm create prop/smith-1.47-correction --from=priv/smith-experimental
-$ lit push origin prop/smith-1.47-correction
+# Create a proposal
+$ lit sm create prop/iliad-oxford-xkm --from=priv/smith-experimental
+$ lit prop open prop/iliad-oxford-xkm --target=ed/iliad-oxford
 
-# Request merge
-$ lit request-merge prop/smith-1.47-correction --into=ed/oxford-1920
+# Vote on proposals
+$ lit prop vote prop/iliad-oxford-xkm --approve
+$ lit prop comment prop/iliad-oxford-xkm -m "Evidence attached"
+
+# Check consensus
+$ lit consensus check prop/iliad-oxford-xkm
+
+# Merge (custos only)
+$ lit prop merge prop/iliad-oxford-xkm
 ```
 
-### Working with LIDs
+### Working with Versiones
 
 ```bash
 # List versiones
-$ lit ver list
-grc/homer/iliad/ed/oxford-1920/20250101
-grc/homer/iliad/ed/oxford-1920/20250315
+$ lit ver list --stemma=ed/iliad-oxford
+ed/iliad-oxford/20250304
+ed/iliad-oxford/20250315
 
 # Show specific versio
-$ lit show grc/homer/iliad/ed/oxford-1920/20250101 --verse=1.47
+$ lit show grc/homer/iliad/ed/iliad-oxford/20250304 --verse=1.47
+
+# Compare versiones
+$ lit delta ed/iliad-oxford/20250304 ed/iliad-oxford/20250315 --verse=1.47
 
 # Cite versio
-$ lit cite grc/homer/iliad/ed/oxford-1920/20250101 --format=bibtex
+$ lit cite grc/homer/iliad/ed/iliad-oxford/20250304 --format=bibtex
 ```
 
-### Metadata
+### Role Management
 
 ```bash
-# View work metadata
-$ lit meta
+# List roles
+$ lit role list
 Codex: grc/homer-iliad
-Title: Iliad
-Author: Homer
-Language: grc (Ancient Greek)
-Type: poetry
 
-# Edit (requires special permission)
-$ lit meta edit --description="Updated description"
+Curatores (radix):
+  @smith
+  @jones
+
+Custodes (public stemmata):
+  @oxford_editor   → ed/iliad-oxford
+  @teubner_editor  → ed/iliad-teubner
+  @manuscript_scholar → ms/venetus-a
+
+# Add curator
+$ lit cur add @patel
+
+# Add custos
+$ lit cus add @cambridge_editor --stemma=ed/iliad-cambridge
 ```
 
 ### Stemma Management
@@ -315,7 +522,7 @@ async function getText(lid: string) {
 
 ## Why Litodex?
 
-- **For scholars**: Permanently citable versiones, collaborative workflows, manuscript tracking
+- **For scholars**: Permanently citable versiones, consensus-driven workflow, manuscript tracking
 - **For students**: Verified texts, Litogram integration, citation-ready
 - **For institutions**: Hosted collections, private repositories, custom branding
 - **For humanity**: Preservation of cultural heritage with cryptographic provenance
