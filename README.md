@@ -220,7 +220,7 @@ tier1 = [
 # Tier 3 peer (only one)
 tier3 = "https://litodex.org"
 
-[lid]
+[cid]
 # National CID namespace
 namespace = "fr"
 pattern = "{namespace}.{year}.{sequential}"  # e.g., fr.2026.0001
@@ -243,7 +243,7 @@ $ cat homer-iliad/provenance.toml
 [work]
 id = "grc/homer-iliad"
 national_id = "fr.2026.0042"
-global_lid = "grc/homer-iliad"  # Confirmed by Tier 3
+global_cid = "grc/homer-iliad"  # Confirmed by Tier 3
 
 [instances]
 sorbonne-20250304 = {
@@ -327,7 +327,7 @@ tier2 = [
   # ... all others
 ]
 
-[lid]
+[cid]
 # Global namespace (no prefix)
 namespace = "global"
 pattern = "{lang}/{author}-{work}"  # e.g., grc/homer-iliad
@@ -1003,9 +1003,9 @@ Litodex provides the verified texts; Litogram provides the practice:
 
 ```typescript
 // litogram.org backend
-async function getText(lid: string) {
+async function getText(cid: string) {
     // Resolve CID through federation
-    const instances = await resolveCID(lid);
+    const instances = await resolveCID(cid);
     
     // Prefer national instance or let user choose
     const selected = await selectInstance(instances);
@@ -1018,7 +1018,7 @@ async function getText(lid: string) {
         reciting: blank_page(),              // 🌑 Blank page
         metadata,
         sources: formatCitation(sources),
-        citation: `${lid} (via ${selected.nation})`
+        citation: `${cid} (via ${selected.nation})`
     };
 }
 ```
@@ -1129,9 +1129,8 @@ The thin sync layer — a directory of what exists and where to find it.
 $ curl https://meta.litodex.org/v1/registry/grc/homer-iliad
 
 {
-  "global_lid": "grc/homer-iliad",
+  "global_cid": "grc/homer-iliad",
   "canonical_name": "Homer, Iliad",
-  "language": "grc",
   "registered": "2026-01-15T10:00:00Z",
   "last_sync": "2026-03-04T15:30:00Z",
   
@@ -1139,7 +1138,7 @@ $ curl https://meta.litodex.org/v1/registry/grc/homer-iliad
     {
       "nation": "fr",
       "bibliotheca": "https://bibliotheca.fr",
-      "national_lid": "fr.2026.0042",
+      "national_cid": "fr.2026.0042",
       "content_url": "https://bibliotheca.fr/grc/homer-iliad",
       "status": "active",
       "copyright": "public-domain"  # Metadata includes copyright status
@@ -1147,7 +1146,7 @@ $ curl https://meta.litodex.org/v1/registry/grc/homer-iliad
     {
       "nation": "de",
       "bibliotheca": "https://bibliotheca.de",
-      "national_lid": "de.2026.0087",
+      "national_cid": "de.2026.0087",
       "content_url": "https://bibliotheca.de/grc/homer-iliad",
       "status": "active",
       "copyright": "cc-by-nc-4.0"
@@ -1155,7 +1154,7 @@ $ curl https://meta.litodex.org/v1/registry/grc/homer-iliad
     {
       "nation": "gr",
       "bibliotheca": "https://bibliotheca.gr",
-      "national_lid": "gr.2026.0012",
+      "national_cid": "gr.2026.0012",
       "content_url": "https://bibliotheca.gr/grc/homer-iliad",
       "status": "active", 
       "copyright": "in-copyright"
@@ -1191,28 +1190,28 @@ $ curl https://meta.litodex.org/v1/registry/grc/homer-iliad
 # meta.litodex.org's core logic
 class GlobalRegistry:
     def __init__(self):
-        self.lids = {}  # global CID → list of national instances
+        self.cids = {}  # global CID → list of national instances
     
-    def check_conflict(self, global_lid, requesting_nation):
+    def check_conflict(self, global_cid, requesting_nation):
         """Check if a global CID is available"""
-        if global_lid in self.lids:
+        if global_cid in self.cids:
             return {
                 "status": "exists",
-                "instances": self.lids[global_lid],
+                "instances": self.cids[global_cid],
                 "message": "This CID is already registered. See existing instances."
             }
         return {"status": "available"}
     
-    def register(self, global_lid, national_instance):
+    def register(self, global_cid, national_instance):
         """Register a national instance under a global CID"""
-        if global_lid not in self.lids:
-            self.lids[global_lid] = []
-        self.lids[global_lid].append(national_instance)
-        self.broadcast_update(global_lid)
+        if global_cid not in self.cids:
+            self.cids[global_cid] = []
+        self.cids[global_cid].append(national_instance)
+        self.broadcast_update(global_cid)
     
-    def resolve(self, global_lid):
+    def resolve(self, global_cid):
         """Return all known instances of a work"""
-        return self.lids.get(global_lid, [])
+        return self.cids.get(global_cid, [])
 ```
 
 ---
@@ -1317,7 +1316,7 @@ $ open https://www.litodex.org
 # 2. They want to find the Iliad and check the metadata registry
 $ curl https://meta.litodex.org/v1/resolve/grc/homer-iliad
 {
-  "global_lid": "grc/homer-iliad",
+  "global_cid": "grc/homer-iliad",
   "instances": [
     {
       "nation": "fr",
