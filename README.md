@@ -739,6 +739,537 @@ async function getText(lid: string) {
 - Resilient network of scholarship
 - Permanent, citable identifiers for all texts
 
+```markdown
+## The Litodex Service Ecosystem
+
+Litodex is not a single website or service — it's a family of distinct services, each with a clear and limited responsibility. This separation ensures the system remains decentralized, copyright-respecting, and resilient.
+
+### The Three International Services
+
+| Service | Domain | Purpose | Content | Acts | LIDs |
+|---------|--------|---------|---------|------|------|
+| **Documentation** | `www.litodex.org` | Explain the system, host specs, link to resources | No | No | No |
+| **Metadata Registry** | `meta.litodex.org` | Global LID registry, discovery, conflict detection | No | No | Yes |
+| **Content Archive** | `arch.litodex.org` | Optional mirror of public domain texts | Yes (PD only) | No | No |
+
+#### 1. www.litodex.org — The Documentation Hub
+
+The human-facing presence. Pure information, no data.
+
+```html
+<!-- www.litodex.org/index.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Litodex — Version Control for Humanity's Texts</title>
+</head>
+<body>
+    <h1>Litodex: A Federation of Scholarly Texts</h1>
+    
+    <section>
+        <h2>What is Litodex?</h2>
+        <p>A protocol and federation for version-controlled, 
+        verified, and collaborative management of literary and sacred texts.</p>
+    </section>
+    
+    <section>
+        <h2>Quick Links</h2>
+        <ul>
+            <li><a href="https://meta.litodex.org">Global Metadata Registry</a></li>
+            <li><a href="https://arch.litodex.org">Public Domain Text Archive</a></li>
+            <li><a href="/spec/v1">Protocol Specification</a></li>
+            <li><a href="/download">Download Litodex Server</a></li>
+        </ul>
+    </section>
+    
+    <section>
+        <h2>Participating National Bibliothecae</h2>
+        <ul>
+            <li><a href="https://bibliotheca.fr">France</a></li>
+            <li><a href="https://bibliotheca.de">Germany</a></li>
+            <li><a href="https://bibliotheca.gr">Greece</a></li>
+            <!-- dynamically populated from meta.litodex.org -->
+        </ul>
+    </section>
+</body>
+</html>
+```
+
+**What it does:**
+- Explains the Litodex philosophy and architecture
+- Hosts the official protocol specification
+- Provides download links for the Litodex server software
+- Links to all participating national bibliothecae
+- Directs users to the metadata registry for discovery
+
+**What it NEVER does:**
+- Store or serve any text content
+- Issue or resolve LIDs
+- Get involved in disputes
+
+---
+
+#### 2. meta.litodex.org — The Global Metadata Registry
+
+The thin sync layer — a directory of what exists and where to find it.
+
+```bash
+# What meta.litodex.org stores
+$ curl https://meta.litodex.org/v1/registry/grc/homer-iliad
+
+{
+  "global_lid": "grc/homer-iliad",
+  "canonical_name": "Homer, Iliad",
+  "language": "grc",
+  "registered": "2026-01-15T10:00:00Z",
+  "last_sync": "2026-03-04T15:30:00Z",
+  
+  "national_instances": [
+    {
+      "nation": "fr",
+      "bibliotheca": "https://bibliotheca.fr",
+      "national_lid": "fr.2026.0042",
+      "content_url": "https://bibliotheca.fr/grc/homer-iliad",
+      "status": "active",
+      "copyright": "public-domain"  # Metadata includes copyright status
+    },
+    {
+      "nation": "de",
+      "bibliotheca": "https://bibliotheca.de",
+      "national_lid": "de.2026.0087",
+      "content_url": "https://bibliotheca.de/grc/homer-iliad",
+      "status": "active",
+      "copyright": "cc-by-nc-4.0"
+    },
+    {
+      "nation": "gr",
+      "bibliotheca": "https://bibliotheca.gr",
+      "national_lid": "gr.2026.0012",
+      "content_url": "https://bibliotheca.gr/grc/homer-iliad",
+      "status": "active", 
+      "copyright": "in-copyright"
+    }
+  ],
+  
+  "archived_instances": [  # Optional pointers to content archive
+    {
+      "archive": "https://arch.litodex.org",
+      "url": "https://arch.litodex.org/grc/homer-iliad/fr.2026.0042",
+      "since": "2026-03-05"
+    }
+  ]
+}
+```
+
+**What it does:**
+- Maintains the global registry of LIDs
+- Syncs metadata from all national bibliothecae
+- Detects identifier conflicts (and only detects — never resolves)
+- Provides a discovery API for users and tools
+- Tracks copyright status of each national instance
+
+**What it NEVER does:**
+- Store any actual text content
+- Resolve conflicts between nations (only notifies)
+- Prefer one national instance over another
+- Make editorial decisions
+
+**The entire codebase (simplified):**
+
+```python
+# meta.litodex.org's core logic
+class GlobalRegistry:
+    def __init__(self):
+        self.lids = {}  # global LID → list of national instances
+    
+    def check_conflict(self, global_lid, requesting_nation):
+        """Check if a global LID is available"""
+        if global_lid in self.lids:
+            return {
+                "status": "exists",
+                "instances": self.lids[global_lid],
+                "message": "This LID is already registered. See existing instances."
+            }
+        return {"status": "available"}
+    
+    def register(self, global_lid, national_instance):
+        """Register a national instance under a global LID"""
+        if global_lid not in self.lids:
+            self.lids[global_lid] = []
+        self.lids[global_lid].append(national_instance)
+        self.broadcast_update(global_lid)
+    
+    def resolve(self, global_lid):
+        """Return all known instances of a work"""
+        return self.lids.get(global_lid, [])
+```
+
+---
+
+#### 3. arch.litodex.org — Optional Public Domain Archive
+
+A convenience service — fast global access to public domain texts, completely optional for national bibliothecae.
+
+```bash
+# How a national bibliotheca opts in
+$ lit archive push fr.2026.0042 --to=arch.litodex.org
+Checking copyright status...
+✓ fr.2026.0042 is public domain
+Pushing content...
+Content archived at: https://arch.litodex.org/grc/homer-iliad/fr.2026.0042
+Metadata updated at meta.litodex.org
+
+# How a user accesses it
+$ lit get grc/homer-iliad --prefer=archive
+Found via meta.litodex.org:
+  National instances: FR, DE, GR
+  Archived copy: arch.litodex.org (public domain)
+  
+Fetching from archive for speed...
+```
+
+**What it does:**
+- Mirrors public domain texts from participating national bibliothecae
+- Provides fast global access to these texts
+- Acts as a secondary preservation layer
+- Respects copyright boundaries completely
+
+**What it NEVER does:**
+- Store any in-copyright or restricted-license texts
+- Replace national bibliothecae as the authoritative source
+- Accept direct uploads from individuals (only from national bibliothecae)
+- Make claims about textual accuracy (delegates to national sources)
+
+**National bibliotheca configuration:**
+
+```toml
+# /etc/litodex/bibliotheca.fr.toml
+[archive]
+# Optional: sync public domain works to central archive
+enabled = true
+archive_url = "https://arch.litodex.org"
+sync_public_domain_only = true
+sync_frequency = "24h"
+
+[copyright]
+# France's copyright determination
+public_domain_years = "author_death + 70"
+# Complex cases handled but never store without certainty
+```
+
+---
+
+### How They Work Together
+
+```mermaid
+graph TB
+    subgraph "User Facing"
+        WEB[www.litodex.org<br/>Documentation]
+        USER[Scholars & Students]
+    end
+    
+    subgraph "Global Services"
+        META[meta.litodex.org<br/>Metadata Registry]
+        ARCH[arch.litodex.org<br/>Public Domain Archive]
+    end
+    
+    subgraph "National Bibliothecae"
+        FR[bibliotheca.fr]
+        DE[bibliotheca.de]
+        GR[bibliotheca.gr]
+    end
+    
+    USER --> WEB
+    USER --> META
+    USER --> ARCH
+    USER --> FR
+    
+    FR -->|metadata| META
+    DE -->|metadata| META
+    GR -->|metadata| META
+    
+    FR -.->|public domain| ARCH
+    DE -.->|public domain| ARCH
+    
+    style WEB fill:#e1f5fe,stroke:#01579b
+    style META fill:#f5f5f5,stroke:#333,stroke-width:3px
+    style ARCH fill:#fff3e0,stroke:#e65100,stroke-dasharray: 5 5
+```
+
+### A User's Journey Through All Three
+
+```bash
+# 1. A student hears about Litodex and visits the documentation
+$ open https://www.litodex.org
+"Learn about the system, find the spec, get the software"
+
+# 2. They want to find the Iliad and check the metadata registry
+$ curl https://meta.litodex.org/v1/resolve/grc/homer-iliad
+{
+  "global_lid": "grc/homer-iliad",
+  "instances": [
+    {
+      "nation": "fr",
+      "url": "https://bibliotheca.fr/grc/homer-iliad",
+      "copyright": "public-domain"
+    },
+    {
+      "nation": "de", 
+      "url": "https://bibliotheca.de/grc/homer-iliad",
+      "copyright": "cc-by-nc-4.0"
+    }
+  ],
+  "archived": "https://arch.litodex.org/grc/homer-iliad/fr.2026.0042"
+}
+
+# 3. They want the fastest access to a public domain version
+$ lit get grc/homer-iliad --from=archive
+Fetching from arch.litodex.org...
+Download complete. (Source: bibliotheca.fr, public domain)
+
+# 4. For scholarly work, they might go directly to the source
+$ open https://bibliotheca.fr/grc/homer-iliad
+"Welcome to the French National Bibliotheca's edition — 
+ complete apparatus, source attribution, and scholarly context"
+```
+
+### Why This Separation Matters
+
+| Concern | Handled By | Why It's Right |
+|---------|------------|----------------|
+| **Discovery** | `meta.litodex.org` | Central registry makes finding texts easy |
+| **Content Authority** | National bibliothecae | Nations set standards, bear responsibility |
+| **Copyright** | National bibliothecae + `arch.litodex.org` | Only public domain flows to archive |
+| **Performance** | `arch.litodex.org` | Fast global access for public domain |
+| **Documentation** | `www.litodex.org` | Clear separation from operational services |
+| **Preservation** | National + optional archive | Multiple layers, no single point of failure |
+
+### The Golden Rule
+
+**No single service does too much.** Each has one job, does it well, and stays out of the others' way. This is how a global federation remains resilient, trustworthy, and scalable.
+
+- `www.litodex.org` **informs** but never stores
+- `meta.litodex.org` **points** but never hosts
+- `arch.litodex.org` **mirrors** but only what's public domain
+- National bibliothecae **author** but never control globally
+- Institutions **create** but never issue permanent IDs
+
+This is the architecture of a system designed to last centuries.
+
+---
+
+## Identifiers: LITID, ACTID, and CID
+
+Litodex uses three distinct types of identifiers, each serving a specific purpose. They are designed to be complementary and impossible to confuse.
+
+| Identifier | What It Identifies | Format | Example | Use Case |
+|------------|-------------------|--------|---------|----------|
+| **LITID** | Content (canonical text) | `sha256:...` | `sha256:8f2a3c...` | Integrity verification, deduplication |
+| **ACTID** | Actum (commit) | Git SHA | `a1b2c3d7e8f9...` | Technical reference, Git operations |
+| **CID** (Citation ID) | Human-readable path | `{lang}/{edition}/{versio}` | `grc/homer-iliad-oxford-1920/ed/20250304` | Scholarly citation, discovery |
+
+### The Golden Rules
+
+- **LITID proves the text hasn't changed.**
+- **ACTID tracks the technical history.**
+- **CID is what you put in your bibliography.**
+
+All three are permanent. All three are mathematically verifiable. None can be forged without detection.
+
+---
+
+### LITID — Content Integrity
+
+A LITID is simply the SHA256 hash of a file in its canonical Litogramma form. It answers only one question: **"Is this exactly the text that was published?"**
+
+```bash
+# Compute LITID of any file
+$ lit litid iliad.txt
+sha256:8f2a3c7d9e1f5a6b2c3d4e5f6a7b8c9d0e1f2a3b
+
+# Verify a file against a known LITID
+$ lit verify iliad.txt --litid=sha256:8f2a3c...
+✓ SHA256 matches - content is authentic
+
+# This works offline, without network, without Git
+# Just math.
+```
+
+**Properties of LITID:**
+- Pure content hash — no metadata, no context
+- Same content always produces the same LITID anywhere in the world
+- Verification requires nothing but the file itself
+- Ideal for deduplication, caching, and integrity checks
+
+---
+
+### ACTID — Technical Identifier
+
+An ACTID is the Git commit hash of an **actum** — a specific snapshot of a stemma. It answers: **"What exact state of the repository contains this change?"**
+
+```bash
+# View an actum by its ACTID
+$ lit show a1b2c3d7e8f9g0h1i2j3k4l5m6n7o8p9q0r1s2t3
+
+ACTID: a1b2c3d7e8f9g0h1i2j3k4l5m6n7o8p9q0r1s2t3
+Date: 2026-03-04
+Author: @smith
+Message: "Corrected line 102 based on Venetus A"
+
+Files:
+  iliad.txt
+    LITID: sha256:8f2a3c7d9e1f5a6b2c3d4e5f6a7b8c9d0e1f2a3b
+  
+  sources.toml
+    Content: [[sources]] type = "manuscript"...
+
+Parent: e4f5g6h7i8j9k0l1m2n3o4p5q6r7s8t9u0v1w2x
+```
+
+**Properties of ACTID:**
+- Git commit hash — universally unique
+- Identifies the exact state of the entire stemma
+- Used for technical operations and cross-referencing
+- Automatically generated by the version control system
+
+---
+
+### CID — Scholarly Citation
+
+A CID is a human-readable path that identifies a specific versio (snapshot) of an edition. It answers: **"What should I cite in my paper so others can find exactly what I used?"**
+
+```bash
+# Resolve a CID to its technical identifiers
+$ lit resolve grc/homer-iliad-oxford-1920/ed/20250304
+
+CID: grc/homer-iliad-oxford-1920/ed/20250304
+ACTID: a1b2c3d7e8f9g0h1i2j3k4l5m6n7o8p9q0r1s2t3
+LITID: sha256:8f2a3c7d9e1f5a6b2c3d4e5f6a7b8c9d0e1f2a3b
+
+Provenance:
+  Bibliotheca: https://bibliotheca.fr
+  Validated: 2026-03-04
+  Sources: Venetus A, Townley manuscript
+```
+
+**Properties of CID:**
+- Human-readable and memorable
+- Follows consistent pattern: `{lang}/{edition-name}/{versio}`
+- What you put in footnotes and bibliographies
+- Resolves to ACTID and LITID through the metadata registry
+
+---
+
+### How They Work Together
+
+```mermaid
+graph TB
+    subgraph "Human Layer"
+        CID[CID: grc/homer-iliad-oxford-1920/ed/20250304]
+    end
+    
+    subgraph "Technical Layer"
+        CID -->|resolves via meta.litodex.org| ACTID[ACTID: a1b2c3d...]
+        ACTID -->|contains at bibliotheca.fr| CONTENT[Content File]
+        CONTENT -->|has hash| LITID[LITID: sha256:8f2a3c...]
+    end
+    
+    subgraph "Verification"
+        LITID -->|validates| FILE[Your downloaded copy]
+    end
+    
+    style CID fill:#e1f5fe,stroke:#01579b
+    style ACTID fill:#fff3e0,stroke:#e65100
+    style LITID fill:#f5f5f5,stroke:#333
+```
+
+---
+
+### In Scholarly Publication
+
+#### Full Citation
+
+```bibtex
+@book{homer-iliad-oxford-1920,
+  title = {Homeri Ilias (Oxford Classical Texts)},
+  editor = {Monro, D.B. and Allen, T.W.},
+  year = {1920},
+  version = {20250304},
+  
+  # Litodex identifiers
+  cid = {grc/homer-iliad-oxford-1920/ed/20250304},
+  actid = {a1b2c3d7e8f9g0h1i2j3k4l5m6n7o8p9q0r1s2t3},
+  litid = {sha256:8f2a3c7d9e1f5a6b2c3d4e5f6a7b8c9d0e1f2a3b},
+  
+  repository = {https://bibliotheca.fr}
+}
+```
+
+#### Print Reference
+
+```text
+In a printed book:
+
+The text follows the Oxford edition of 1920 as preserved in the 
+Litodex federation (CID: grc/homer-iliad-oxford-1920/ed/20250304). 
+The specific version used has ACTID a1b2c3d7e8f9... and content 
+integrity verified by LITID sha256:8f2a3c7d9e1f...
+```
+
+#### Classroom Use
+
+```text
+Professor to students:
+
+"For Thursday, read Iliad Book 1 using the Oxford edition.
+CID: grc/homer-iliad-oxford-1920/ed/20250304
+
+You can verify your copy matches by checking the LITID:
+sha256:8f2a3c7d9e1f5a6b2c3d4e5f6a7b8c9d0e1f2a3b"
+```
+
+---
+
+### When to Use Each
+
+| Scenario | Use CID | Use ACTID | Use LITID |
+|----------|---------|-----------|-----------|
+| Citing in a paper | ✅ Primary | ⚠️ Supplementary | ⚠️ Supplementary |
+| Finding an edition | ✅ Essential | ❌ Not needed | ❌ Not needed |
+| Technical debugging | ❌ Not enough | ✅ Required | ❌ Not needed |
+| Verifying a download | ❌ Not needed | ❌ Not needed | ✅ Required |
+| Checking for duplicates | ❌ Not needed | ❌ Not needed | ✅ Perfect |
+| Git operations | ❌ Not enough | ✅ Required | ❌ Not needed |
+| Offline validation | ❌ Needs network | ❌ Needs network | ✅ Works anywhere |
+
+---
+
+### Mnemonic
+
+> **C**ID = **C**ite it in your paper  
+> **ACT**ID = The **ACT** of committing  
+> **LIT**ID = The **LIT**eral content
+
+---
+
+### Resolution Chain
+
+```bash
+# Start with a CID (what you have in your paper)
+$ lit resolve grc/homer-iliad-oxford-1920/ed/20250304
+→ ACTID: a1b2c3d7e8f9g0h1i2j3k4l5m6n7o8p9q0r1s2t3
+→ LITID: sha256:8f2a3c7d9e1f5a6b2c3d4e5f6a7b8c9d0e1f2a3b
+
+# Fetch the content using the ACTID
+$ lit fetch a1b2c3d7e8f9g0h1i2j3k4l5m6n7o8p9q0r1s2t3
+Downloaded iliad.txt
+
+# Verify using the LITID
+$ lit verify iliad.txt --litid=sha256:8f2a3c...
+✓ Content is authentic
+```
+
+The three identifiers work together seamlessly, each serving its purpose without overreach. This is the architecture of a system built to last.
 ---
 
 ## License
