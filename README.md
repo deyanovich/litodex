@@ -13,7 +13,7 @@ The Litodex system is a combination of:
 
 The Litodex system consists of two applications:
 1. `lit`, ("humanities git") a thin layer over git, with an adapted terminology and enforced branch-naming, tagging, and merging restrictions
-2. `litodex`, ("humanities GitHub", but open source and federated), a server with user management, GPG signature manamgement, and workflows
+2. `litodex`, ("humanities GitHub", but open source and federated), a server with user management, GPG signature management, and workflows
 
 ## Core Philosophy
 
@@ -292,50 +292,7 @@ auto_resolve = false
 
 ### The Global Registry Data Model
 
-```json
-// What litodex.org stores per LID
-GET https://litodex.org/registry/grc/homer-iliad
-
-{
-  "global_lid": "grc/homer-iliad",
-  "canonical_name": "Homer, Iliad",
-  "language": "grc",
-  "registered": "2026-01-15T10:00:00Z",
-  "last_updated": "2026-03-04T15:30:00Z",
-  
-  "national_instances": [
-    {
-      "nation": "fr",
-      "national_lid": "fr.2026.0042",
-      "bibliotheca": "https://bibliotheca.fr",
-      "work_url": "https://bibliotheca.fr/grc/homer-iliad",
-      "editions": [
-        {
-          "id": "sorbonne-20250304",
-          "name": "Édition critique de l'Iliade",
-          "url": "https://bibliotheca.sorbonne.fr/grc/homer-iliad/ed/sorbonne/20250304"
-        }
-      ]
-    },
-    {
-      "nation": "de",
-      "national_lid": "de.2026.0087",
-      "bibliotheca": "https://bibliotheca.de",
-      "work_url": "https://bibliotheca.de/grc/homer-iliad",
-      "editions": [
-        {
-          "id": "hdbrw-20250215",
-          "name": "Heidelberger Homer-Ausgabe",
-          "url": "https://bibliotheca.uni-hd.de/grc/homer-iliad/ed/hdbrw/20250215"
-        }
-      ]
-    }
-  ],
-  
-  "global_consensus": null,  // Only if nations agree
-  "conflict_status": "none"
-}
-```
+The full registry data model — including `national_instances`, `archived_instances`, and copyright fields — is defined in the `meta.litodex.org` service. See [The Litodex Service Ecosystem](#the-litodex-service-ecosystem) for the canonical JSON schema.
 
 ---
 
@@ -379,48 +336,7 @@ The international bibliotheca's **only power** is to detect conflicts and notify
 
 ### The Conflict Detector
 
-```python
-# litodex.org's entire core logic (simplified)
-
-class GlobalRegistry:
-    def __init__(self):
-        self.lids = {}  # global LID → list of national instances
-        self.reservations = set()  # LIDs being checked
-    
-    def check_conflict(self, global_lid, requesting_nation):
-        """Check if a global LID is available"""
-        if global_lid in self.lids:
-            # Already exists - return existing instances
-            return {
-                "status": "exists",
-                "instances": self.lids[global_lid],
-                "message": f"This LID is already registered. See existing instances above."
-            }
-        
-        # Not yet registered - reserve it briefly
-        self.reservations.add(global_lid)
-        return {
-            "status": "available",
-            "reservation": "valid for 24h",
-            "message": "LID available. Please complete registration within 24 hours."
-        }
-    
-    def register(self, global_lid, national_instance):
-        """Register a national instance under a global LID"""
-        if global_lid not in self.lids:
-            self.lids[global_lid] = []
-        
-        self.lids[global_lid].append(national_instance)
-        
-        # Notify all national bibliothecae of the new LID
-        self.broadcast_update(global_lid)
-        
-        return {
-            "status": "registered",
-            "global_lid": global_lid,
-            "message": f"Successfully registered. This LID now points to {len(self.lids[global_lid])} national instance(s)."
-        }
-```
+The conflict-detection logic is implemented in `meta.litodex.org`. See [The Litodex Service Ecosystem](#the-litodex-service-ecosystem) for the canonical `GlobalRegistry` class.
 
 ### Real Conflict Example
 
@@ -509,6 +425,27 @@ A custos:
 - Facilitates discussion and voting
 - **Verifies source integrity** before convergence
 - Executes convergences only when consensus thresholds are met
+
+#### The Custos Dashboard
+
+```bash
+$ lit custos dashboard --stemma=ed/iliad-oxford
+Custos dashboard for ed/iliad-oxford
+
+Current version: ed/iliad-oxford/20250401
+
+Open proposals:
+  prop/iliad-oxford-tyr (92% approve, sources: 3/3 verified) → ready to converge
+  prop/iliad-oxford-wlm (63% approve, sources: 5/5 verified) → needs discussion
+  prop/iliad-oxford-zab (41% approve, sources: 2/4 verified) → weak support, missing sources
+
+Recent convergences:
+  2025-04-01: converged prop/iliad-oxford-jqr (apparatus)
+  2025-03-15: converged prop/iliad-oxford-tyr (line 102)
+  2025-03-04: created ed/iliad-oxford from 3 proposals
+
+Consensus threshold: 70% approve, all sources must be verified
+```
 
 ## Repository Structure (Same at All Levels)
 
@@ -714,7 +651,7 @@ sources = [
 rationale = "Manuscript evidence supports Monro's correction"
 ```
 
-## Viewing Proposal Sources
+### Viewing Proposal Sources
 
 ```bash
 # Show all sources used in a proposal
@@ -739,7 +676,7 @@ Act e4f5g6h: "Added apparatus note"
   Image: https://.../venetus-a/47r.jpg
 ```
 
-## The Radix Auto-Convergence
+### The Radix Auto-Convergence
 
 When curators update the radix:
 
@@ -864,58 +801,6 @@ ed/iliad-oxford/20250420   (further corrections)
 ```
 
 Each versio is a frozen snapshot of community consensus at that point in time, with complete provenance tracking back to original sources.
-
-## The Custos Dashboard
-
-```bash
-$ lit custos dashboard --stemma=ed/iliad-oxford
-Custos dashboard for ed/iliad-oxford
-
-Current version: ed/iliad-oxford/20250401
-
-Open proposals:
-  prop/iliad-oxford-tyr (92% approve, sources: 3/3 verified) → ready to converge
-  prop/iliad-oxford-wlm (63% approve, sources: 5/5 verified) → needs discussion
-  prop/iliad-oxford-zab (41% approve, sources: 2/4 verified) → weak support, missing sources
-
-Recent convergences:
-  2025-04-01: converged prop/iliad-oxford-jqr (apparatus)
-  2025-03-15: converged prop/iliad-oxford-tyr (line 102)
-  2025-03-04: created ed/iliad-oxford from 3 proposals
-
-Consensus threshold: 70% approve, all sources must be verified
-```
-
-
-### Phase 3: Build Consensus
-
-Subsequent acts must also cite sources:
-
-```bash
-$ lit prop vote iliad-oxford-xkm --approve
-$ lit prop comment iliad-oxford-xkm -m "Evidence attached"
-$ lit consensus check iliad-oxford-xkm
-Consensus: 78% approve (threshold met)
-  --source-mediator="@smith" \
-  --source-note="Monro discusses this crux"
-```
-
-### Phase 4: Converge
-
-```bash
-$ lit converge prop/iliad-oxford-xkm --into=ed/iliad-oxford
-Convergence complete. New versio: ed/iliad-oxford/20250304
-```
-
-### Phase 5: Push to National Level
-
-```bash
-$ lit push national --to=bibliotheca.fr
-Pushing ed/iliad-oxford/20250304 for national registration...
-Requesting LID from bibliotheca.fr...
-Received national LID: fr.2026.0042
-Global LID confirmed: grc/homer-iliad
-```
 
 ---
 
@@ -1055,7 +940,6 @@ async function getText(lid: string) {
 - Resilient network of scholarship
 - Permanent, citable identifiers for all texts
 
-```markdown
 ## The Litodex Service Ecosystem
 
 Litodex is not a single website or service — it's a family of distinct services, each with a clear and limited responsibility. This separation ensures the system remains decentralized, copyright-respecting, and resilient.
