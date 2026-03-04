@@ -29,13 +29,14 @@ The Litodex system consists of two applications:
 - Role and permission assignments (curator, custos)
 - Voting records and consensus state
 - Federation peering and sync configuration
+- Works database (registry of abstract works — title + author — linking related editions)
 
 The `lit` CLI talks to Git for content operations and to the bibliotheca server API for user, role, and voting operations.
 
 ## Core Philosophy
 
 - **One edition = one codex** — each concrete edition (and each manuscript) gets its own codex
-- **Stemmata = traditions** — multiple authoritative versions coexist as stemmata within a codex
+- **Magister = consensus** — each codex converges toward a single authoritative text through community agreement
 - **Sources are sacred** — every change must be traceable to a verifiable source
 - **Consensus-driven** — public editions emerge from community agreement, not maintainer fiat
 - **Deterministic content-derived identifiers** — every .lit file has a hash-derived LITID
@@ -562,6 +563,44 @@ Manuscripts are also their own codices:
 
 Author is optional in the codex name — many works have unknown or disputed authorship.
 
+### Works Database
+
+Each bibliotheca maintains a **works database** — a registry above the codex level that tracks abstract works (title + author). This is stored in the bibliotheca server, alongside user accounts, voting records, and federation configuration. It is not stored in Git.
+
+The works database is the grouping mechanism that explains how `grc/iliad-oxford-1920`, `grc/iliad-teubner-1998`, and `grc/iliad-venetus-a` are all editions of the same underlying work ("Homer's Iliad").
+
+```
+Works Database (bibliotheca-level)                 Codices
+┌──────────────────────────────────┐
+│ Homer, Iliad                     │ ──→  grc/homer-iliad-oxford-1920
+│                                  │ ──→  grc/homer-iliad-teubner-1998
+│                                  │ ──→  grc/homer-iliad-venetus-a
+├──────────────────────────────────┤
+│ Ashvaghosha, Buddhacarita        │ ──→  san/buddhacharita-johnston-1936
+├──────────────────────────────────┤
+│ (unknown), Beowulf               │ ──→  ang/beowulf-klaeber-1950
+└──────────────────────────────────┘
+```
+
+When a new codex is created, `lit` checks the bibliotheca's works database for a matching title + author:
+- **Found** → the new codex is linked to the existing work record
+- **Not found** → a new work record is created automatically
+
+```bash
+$ lit codex init grc/iliad-teubner-1998 \
+  --title="Iliad" \
+  --author="Homer" \
+  --edition="Teubner 1998"
+
+Checking works database...
+✓ Found existing work: "Homer, Iliad" (2 other editions registered)
+  Linked to work record.
+
+Codex grc/iliad-teubner-1998 created.
+```
+
+The works database syncs upstream: Tier 2 maintains its own works database aggregated from all its Tier 1 institutions, and Tier 3 maintains the global one. This is how "related editions" are discoverable across the federation.
+
 ### Stemma Hierarchy
 
 | Prefix | Latin | Purpose | Protection |
@@ -570,7 +609,24 @@ Author is optional in the codex name — many works have unknown or disputed aut
 | `magister` | *magister* | The single authoritative text | 🔒 Custos-facilitated |
 | `prop/` | *propositum* | Proposals targeting magister | ❌ Anyone (institutional policy) |
 | `priv/` | *privatus* | Personal workspace | ❌ Owner only |
-| `collab/` | *collaboratio* | Group projects | 🔒 Team |
+| `collab/` | *collaboratio* | Group projects / shared workspace | 🔒 Configurable (institution) |
+
+### The `collab/` Stemma
+
+A `collab/` stemma is a shared workspace for group projects within a Tier 1 bibliotheca:
+
+- **Created by** any user at a Tier 1 bibliotheca (subject to bibliotheca policy)
+- **Access** is institution-configured: read-only for all, writable for all, or restricted to a named team
+- **Purpose**: shared workspace for collaboration before promoting work to `prop/` and eventually `magister`
+- **Scope**: only exists at Tier 1 — `collab/` stemmata never flow upstream
+
+The natural scholarly progression is:
+
+```
+priv/  →  collab/  →  prop/  →  magister
+```
+
+Not every step is mandatory. A scholar can go straight from `priv/` to `prop/`, or create a `prop/` directly without any prior personal or collaborative workspace.
 
 ### The Radix Stemma
 
@@ -701,11 +757,11 @@ Initially, only `radix` and personal stemmata exist:
 $ lit sm list
 grc/iliad-oxford-1920:
   radix
-  priv/smith-notes
-  priv/jones-collation
-  prop/iliad-oxford-xkm   (proposed edition)
+  magister
+  prop/iliad-oxford-xkm   (proposed correction)
   prop/iliad-oxford-jqr   (another proposal)
-  prop/iliad-oxford-plm   (yet another)
+  priv/smith-notes
+  collab/seminar-2026      (shared workspace)
 ```
 
 ### Phase 2: Create Proposal with Sources
@@ -1445,6 +1501,19 @@ Provenance:
 - Follows consistent pattern: `{lang}/{title}-{publisher-or-edition}-{year}/{versio-date}`
 - What you put in footnotes and bibliographies
 - Resolves to ACTID and LITID through the metadata registry
+
+#### Date Collisions
+
+Versio dates are derived from the convergence date. In the rare case that the same codex produces two versiones on the same day (for example, if Tier 2 returns a submission for corrections and a revised version is converged the same day):
+
+- **Before Tier 2 promotion:** the CID is purely internal and the date label can be reassigned to the corrected version without consequence — it has not yet been published.
+- **After Tier 2 promotion** (extremely rare edge case): append a letter suffix following alphabetical progression: `a`, `b`, `c`, etc.
+
+```
+grc/iliad-oxford-1920/20250304     (first promoted versio of the day)
+grc/iliad-oxford-1920/20250304a    (second distinct promoted versio, same day)
+grc/iliad-oxford-1920/20250304b    (third, if needed)
+```
 
 ---
 
