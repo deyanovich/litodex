@@ -12,8 +12,25 @@ The Litodex system is a combination of:
 - A workflow system with a tiered, federated distributed nodes called "bibliothecae" designed to produce authoritative, community consensus-based, versions of texts, substantiated by sourcing evidence
 
 The Litodex system consists of two applications:
-1. `lit`, ("humanities git") a thin layer over git, with an adapted terminology and enforced branch-naming, tagging, and merging restrictions
+1. `lit`, ("humanities git") a standalone Rust binary that uses Git internally as its storage engine. Git is an **implementation detail hidden from the user** — users never run `git` commands directly. The repository format is opaque: `lit` uses a non-standard storage directory (not `.git`) to prevent accidental or intentional use of raw `git` commands that would bypass workflow restrictions. This hiding is intentional and necessary: it enforces branch-naming conventions, source metadata requirements, signing requirements, and convergence rules that raw Git would not enforce.
 2. `litodex`, ("humanities GitHub", but open source and federated), a server with user management, GPG signature management, and workflows
+
+### What Lives Where
+
+**In Git (managed by `lit` CLI):**
+- Text content (the actual literary/sacred texts)
+- Source metadata (in commit trailers and cumulative `sources.toml`)
+- Convergence history (the commit graph)
+- Versiones (annotated tags)
+
+**In the bibliotheca server (managed by `litodex` server):**
+- User accounts and authentication
+- Certificate/key management (including Tier 2-issued custos keys)
+- Role and permission assignments (curator, custos)
+- Voting records and consensus state
+- Federation peering and sync configuration
+
+The `lit` CLI talks to Git for content operations and to the bibliotheca server API for user, role, and voting operations.
 
 ## Core Philosophy
 
@@ -248,6 +265,17 @@ current = "sorbonne-20250304"
 archive = ["cnrs-20250301"]
 ```
 
+### A Note on Countries Without a Strong Tier 2
+
+The three-tier model is designed for countries with strong national scholarly institutions. Countries without a meaningful Tier 2 authority — the United States is the most prominent example, where no single body plays the role of a national academy in this sense — can have their Tier 1 institutions sync directly with Tier 3. This is not a failure of the model. It is the federation adapting to local scholarly culture. The configuration is simple: a Tier 1 bibliotheca that lists Tier 3 as its peer instead of a Tier 2.
+
+```toml
+# Example: US institution syncing directly with Tier 3
+[peers]
+# No tier2 entry — sync directly with the international registry
+tier3 = "https://litodex.org"
+```
+
 ---
 
 ## Tier 3: International Bibliotheca (litodex.org)
@@ -468,6 +496,45 @@ Recent convergences:
 Consensus model: supermajority (70% approve, configured locally), all sources must be verified
 ```
 
+## Signing and Trust
+
+Every act in Litodex must be signed with a GPG or SSH key. Signatures provide accountability, but their role differs between local and federated trust.
+
+### The Trust Chain
+
+```
+Tier 2 (national bibliotheca)
+  └── issues keys to custodes
+        └── custos signs convergence acts
+              └── Tier 2 verifies its own issued key
+```
+
+- **Individual act signatures** provide local accountability within a Tier 1 bibliotheca — they track who contributed what and deter tampering.
+- **`prop/` branches are always squash-merged** into the target stemma when converged. This collapses the individual act signatures into a single convergence act.
+- **Only the custos signs the convergence act.** This is the signature that matters for upstream trust. When a Tier 1 bibliotheca pushes to its national Tier 2, only this single signature needs to be verified.
+
+### Key Issuance and Revocation
+
+Tier 2 issues keys to custodes at Tier 1 institutions. A custos at the Sorbonne, for example, holds a key issued by `bibliotheca.fr` — not by the Sorbonne itself — that certifies them as a recognized custos in the French scholarly network.
+
+```
+1. Custos requests a key from their national bibliotheca (Tier 2)
+2. Tier 2 verifies the scholar's role at their institution
+3. Tier 2 issues a signed certificate binding the scholar's public key
+   to their custos role
+4. The custos uses this key to sign all convergence acts
+5. When Tier 1 pushes to Tier 2, the national bibliotheca verifies
+   a signature it issued itself — no cross-institutional trust needed
+```
+
+If a custos leaves or is otherwise revoked, the Tier 2 bibliotheca revokes the key. All future convergence acts from that custos will fail verification, protecting the integrity of the upstream record.
+
+### Why Squash-Merging Makes This Work
+
+Because `prop/` branches are always squash-merged, the entire history of individual acts — with their many different author signatures — is collapsed into one signed convergence act. Tier 2 does not need to trust every scholar who contributed to a proposal; it only needs to trust the custos who certified the result. This keeps the verification model simple and the trust surface small.
+
+Individual act signatures remain in the local history at the Tier 1 bibliotheca for local accountability and auditing — they are simply not required for federation trust.
+
 ## Repository Structure (Same at All Levels)
 
 Every codex follows this pattern:
@@ -482,7 +549,7 @@ Example: `grc/homer-iliad`
 
 | Prefix | Latin | Purpose | Protection |
 |--------|-------|---------|------------|
-| `radix` | *radix* | Root stemma with `meta.toml` | 🔒 Curators only |
+| `radix` | *radix* | Root stemma with `meta.toml` and `sources.toml` | 🔒 Curators only |
 | `ed/` | *editio* | Published editions (consensus-based) | 🔒 Custos-facilitated |
 | `ms/` | *manuscriptum* | Historical manuscript transcriptions | 🔒 Custos-facilitated |
 | `prop/` | *propositum* | Proposals for changes (must include sources) | ❌ Anyone, but must cite sources |
@@ -493,9 +560,10 @@ Example: `grc/homer-iliad`
 
 ### The Radix Stemma
 
-Every codex has a `radix` stemma containing a single `meta.toml` file:
+Every codex has a `radix` stemma containing `meta.toml` and a system-managed `sources.toml` file:
 
 ```toml
+# meta.toml
 [work]
 id = "grc/homer-iliad"
 title = "Iliad"
@@ -509,18 +577,52 @@ description = "Ancient Greek epic poem"
 license = "public-domain"
 ```
 
+The `sources.toml` file is a cumulative record of all sources from all converged proposals. It is **system-managed** — `lit` updates it automatically whenever acts with source metadata are converged into a stemma. Users cannot edit it directly.
+
+```toml
+# sources.toml (system-managed -- do not edit directly)
+[[sources]]
+act = "a1b2c3d"
+stemma = "ed/iliad-oxford"
+converged = "2026-03-04T10:30:00Z"
+type = "digital"
+url = "https://archive.org/details/homeriilias00home"
+hash = "sha256:def456..."
+conversion = "litogramma-v1"
+
+[[sources]]
+act = "e4f5g6h"
+stemma = "ed/iliad-oxford"
+converged = "2026-03-15T14:22:00Z"
+type = "print"
+citation = "Monro (1897). Homer: Iliad I-XII. Oxford. p. 23"
+mediator = "@smith"
+
+[[sources]]
+act = "i7j8k9l"
+stemma = "ed/iliad-oxford"
+converged = "2026-03-15T14:22:00Z"
+type = "manuscript"
+identifier = "Venetus A"
+catalog = "Marc. Gr. Z. 454"
+folio = "47r"
+mediator = "@jones"
+```
+
+This gives the radix a complete provenance record for the work, accumulating sources from every converged proposal across all stemmata.
+
 The radix is:
 - Created at initialization, never deleted
-- Only editable by curators
+- Only editable by curators (for `meta.toml`; `sources.toml` is managed by `lit`)
 - Automatically converged into all other stemmata when changed
-- The source of truth for work identity
+- The source of truth for work identity and cumulative source provenance
 
 ```bash
 $ lit sm show radix
 Stemma: radix (PROTECTED)
 Type: root stemma
 Curators: @smith, @jones
-Contains: meta.toml only
+Contains: meta.toml, sources.toml
 Acts: 3 (last: a1b2c3d "Updated description")
 Auto-converges to: all stemmata
 ```
@@ -616,31 +718,16 @@ $ lit prop create iliad-oxford-xkm \
   --pipeline="litogramma-v1" \
   --message="Base text from Archive.org scan, converted to Litogramma"
 
-# This creates a special annotated act that records source metadata
-# and branches from that act to create the proposal stemma
-```
-
-Each proposal contains a `proposal.toml` at its root:
-
-```toml
-[proposal]
-id = "iliad-oxford-xkm"
-target = "ed/iliad-oxford"
-created = "2026-03-04T10:30:00Z"
-creator = "@smith"
-
-[proposal.initial_source]
-type = "digital"
-url = "https://archive.org/details/homeriilias00home"
-hash = "sha256:def456..."
-conversion = "litogramma-v1"
-verification_status = "verified"
-verified_by = "@smith"
-
-[proposal.goal]
-description = "Create a new Oxford edition based on public domain sources"
-scope = "Full text of Iliad with minimal apparatus"
-bases = ["ms/venetus-a", "ms/townley"]
+# Source metadata is stored as structured trailers in the commit message,
+# for example:
+#
+#   Base text from Archive.org scan, converted to Litogramma
+#
+#   Source-type: digital
+#   Source-url: https://archive.org/details/homeriilias00home
+#   Source-hash: sha256:def456...
+#   Source-pipeline: litogramma-v1
+#   Source-verified-by: @smith
 ```
 
 ### Phase 3: Building on a Proposal
@@ -656,21 +743,23 @@ $ lit act -m "Corrected accent in line 102" \
   --source-note="Monro discusses this crux"
 ```
 
-Each act can track multiple sources:
+Each act can track multiple sources using structured commit trailers. When an act references more than one source, `lit` records each source as a numbered set of trailers:
 
-```toml
-# In the proposal metadata, acts track their sources
-[[proposal.acts]]
-hash = "abc123..."
-message = "Corrected accent in line 102"
-sources = [
-    { type = "print", citation = "Monro (1897). Homer: Iliad I-XII. Oxford. p. 23", 
-      mediator = "@smith", note = "Monro discusses this crux" },
-    { type = "manuscript", identifier = "Venetus A", 
-      note = "Confirmed reading on folio 47r" }
-]
-rationale = "Manuscript evidence supports Monro's correction"
 ```
+Corrected accent in line 102
+
+Source-type: print
+Source-citation: Monro (1897). Homer: Iliad I-XII. Oxford. p. 23
+Source-mediator: @smith
+Source-note: Monro discusses this crux
+
+Source-type: manuscript
+Source-identifier: Venetus A
+Source-note: Confirmed reading on folio 47r
+Source-mediator: @jones
+```
+
+The diff and the commit message together are sufficient to judge a proposal — the trailers provide the source provenance without requiring any separate metadata file.
 
 ### Viewing Proposal Sources
 
