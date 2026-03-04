@@ -12,6 +12,7 @@ Litodex is a platform for version-controlled, verified, and collaborative manage
 - **Consensus-driven** — public editions emerge from community agreement, not maintainer fiat
 - **Permanent identifiers** — every snapshot gets a citable LID
 - **Lightweight markup** — Litogramma annotations make parsing trivial
+- **Federated by design** — no central control, multiple sovereign nodes
 
 ## Core Terminology
 
@@ -27,50 +28,471 @@ Litodex is a platform for version-controlled, verified, and collaborative manage
 | **status** | status | `st` | Current state |
 | **merge** | convergere | `con` | Combine proposals into a stemma |
 
-## Roles
+## The Bibliotheca Federation
 
-| Role | Latin | Responsibility | Alias |
-|------|-------|----------------|-------|
-| **Curator** | *curator* | Maintains radix stemma (metadata) | `cur` |
-| **Custos** | *custos* | Facilitates consensus for a public stemma | `cus` |
+Litodex is not a single service but a **federation of sovereign nodes** called **bibliothecae** (singular: bibliotheca). Each bibliotheca is an independent server running the Litodex software, configured for its role in the scholarly ecosystem.
 
-### Curator
+### The Three-Tier Hierarchy
 
-The curator maintains the **radix** — the root stemma containing only `meta.toml`. This role is about preserving the work's identity, not controlling content.
+```mermaid
+graph TB
+    subgraph "Tier 3: International"
+        I[litodex.org<br/>Global Registry]
+        I -->|only syncs metadata| I2[mirror.litodex.org]
+    end
+
+    subgraph "Tier 2: National"
+        N1[bibliotheca.fr<br/>Academy of Letters]
+        N2[bibliotheca.de<br/>National Library]
+        N3[bibliotheca.br<br/>Academy of Sciences]
+        N4[bibliotheca.in<br/>Scholarly Council]
+    end
+
+    subgraph "Tier 1: Operational"
+        N1 --> U1[Sorbonne<br/>bibliotheca.sorbonne.fr]
+        N1 --> U2[CNRS<br/>bibliotheca.cnrs.fr]
+        N2 --> U3[Heidelberg<br/>bibliotheca.uni-hd.de]
+        N2 --> U4[LMU<br/>bibliotheca.lmu.de]
+        N3 --> U5[USP<br/>bibliotheca.usp.br]
+        N3 --> U6[UFRJ<br/>bibliotheca.ufrj.br]
+        
+        U7[Private Scholar<br/>bibliotheca.smith.org]
+        U8[Monastery<br/>bibliotheca.montecassino.it]
+        U9[Digital Library<br/>bibliotheca.perseus.org]
+    end
+    
+    style I fill:#f5f5f5,stroke:#333,stroke-width:3px
+    style N1 fill:#e1f5fe,stroke:#01579b
+    style N2 fill:#fff3e0,stroke:#e65100
+    style N3 fill:#e8f5e8,stroke:#1b5e20
+    style N4 fill:#f3e5f5,stroke:#4a148c
+```
+
+### Tier Definitions
+
+| Tier | Type | Acts Enabled? | Can Issue LIDs? | Primary Function |
+|------|------|---------------|-----------------|------------------|
+| 1 | Operational | ✅ YES | ❌ NO | Create content, build consensus |
+| 2 | National | ❌ NO | ✅ YES | Validate, preserve, issue national LIDs |
+| 3 | International | ❌ NO | ✅ YES | Sync, detect conflicts, confirm global LIDs |
+
+#### Key Insight
+**Tier 2 and Tier 3 run the exact same software** — just with different configurations and peer relationships. The only difference is what they peer with.
+
+---
+
+## Tier 1: Operational Bibliothecae
+
+**Who:** Universities, research institutions, private scholars, monasteries, museums, digital libraries
+
+**What they do:**
+- Create and modify content (`act`, `prop`, `priv`)
+- Host their own stemmata with full version control
+- Build consensus within their community
+- Push converged works to their national bibliotheca
+- Can peer directly with other Tier 1 for collaboration
+
+### Technical Capabilities
+- Full read/write access to their own stemmata
+- Can host both public and private works
+- Responsible for their own authentication
+- Must peer with their national bibliotheca (but can also peer with others)
+- **Cannot issue LIDs** — must request them from Tier 2
+
+### Example Workflow
 
 ```bash
-$ lit cur list
+# A scholar at Sorbonne creates work
+$ lit codex init grc/homer-iliad \
+  --bibliotheca=bibliotheca.sorbonne.fr
+
+# Work lives locally at:
+# https://bibliotheca.sorbonne.fr/grc/homer-iliad
+
+# Build consensus, create edition
+$ lit sm create prop/iliad-sorbonne-xkm
+$ lit act -m "Initial text" --source="..."
+# ... discussion, voting ...
+$ lit converge prop/iliad-sorbonne-xkm --into=ed/iliad-sorbonne
+
+# When ready, push to national level
+$ lit push national --to=bibliotheca.fr
+Pushing ed/iliad-sorbonne/20250304 to national bibliotheca...
+Requesting LID from bibliotheca.fr...
+```
+
+---
+
+## Tier 2: National Bibliothecae
+
+**Who:** Academies of Letters/Sciences, National Libraries, equivalent scholarly bodies
+
+**What they do:**
+- **Receive** converged stemmata from Tier 1 institutions
+- **Validate** that submissions meet national scholarly standards
+- **Issue national LIDs** (e.g., `fr.2026.0042`)
+- **Host** national editions for long-term preservation
+- **Never create content directly** — only receive from Tier 1
+- **Sync metadata** with the international bibliotheca
+
+### Technical Capabilities
+- **Acts are disabled** — no direct commits
+- **LID issuance is enabled** — can create permanent identifiers
+- **Sync with Tier 1** (institutional bibliothecae)
+- **Sync with Tier 3** (international bibliotheca)
+- Maintains provenance of all received works
+
+### Configuration Example
+
+```toml
+# /etc/litodex/bibliotheca.fr.toml
+[server]
+name = "Bibliotheca Nationalis Franciae"
+domain = "bibliotheca.fr"
+tier = 2
+
+[capabilities]
+acts_enabled = false  # Cannot create content
+lid_issuance = true    # Can issue national LIDs
+sync_enabled = true    # Can sync with peers
+
+[peers]
+# Tier 1 institutions that feed into this national bibliotheca
+tier1 = [
+  "https://bibliotheca.sorbonne.fr",
+  "https://bibliotheca.cnrs.fr",
+  "https://bibliotheca.college-de-france.fr"
+]
+
+# Tier 3 peer (only one)
+tier3 = "https://litodex.org"
+
+[lid]
+# National LID namespace
+namespace = "fr"
+pattern = "{namespace}.{year}.{sequential}"  # e.g., fr.2026.0001
+
+[sync]
+# Push metadata to Tier 3 immediately
+push_to_tier3 = true
+# Check for conflicts daily
+conflict_check_interval = "24h"
+```
+
+### What a National Bibliotheca Stores
+
+```bash
+$ ls -la /var/lib/bibliotheca.fr/grc/
+drwxr-xr-x  homer-iliad/
+-rw-r--r--  provenance.toml
+
+$ cat homer-iliad/provenance.toml
+[work]
+id = "grc/homer-iliad"
+national_id = "fr.2026.0042"
+global_lid = "grc/homer-iliad"  # Confirmed by Tier 3
+
+[instances]
+sorbonne-20250304 = {
+  source = "bibliotheca.sorbonne.fr/grc/homer-iliad/ed/sorbonne/20250304",
+  validated = "2026-03-05",
+  validator = "Académie des Inscriptions et Belles-Lettres",
+  validation_notes = "Meets French scholarly standards for critical editions"
+}
+
+cnrs-20250301 = {
+  source = "bibliotheca.cnrs.fr/grc/homer-iliad/ed/cnrs/20250301",
+  validated = "2026-03-02",
+  validator = "Académie des Sciences",
+  validation_notes = "Diplomatic transcription, apparatus complete"
+}
+
+[national_edition]
+# The academy may choose to highlight certain versions
+current = "sorbonne-20250304"
+archive = ["cnrs-20250301"]
+```
+
+---
+
+## Tier 3: International Bibliotheca (litodex.org)
+
+**Who:** A lightweight coordinating body — the global registry
+
+**What they do:**
+- **Maintain the global LID registry** (which works exist, their canonical names)
+- **Sync metadata** across all national bibliothecae
+- **Detect identifier conflicts** when two nations use the same LID for different works
+- **Never store content** — only metadata and pointers
+- **Never exercise power** — conflicts are returned to the nations involved
+- **Confirm global LIDs** after checking for conflicts
+
+### Technical Capabilities
+- **Acts are disabled** — no content, ever
+- **LID issuance is enabled** — confirms global identifiers
+- **Sync with all Tier 2** bibliothecae
+- **Conflict detection** (automatic)
+- **Conflict resolution** (human-mediated, never automatic)
+
+### Configuration Example
+
+```toml
+# /etc/litodex/litodex.org.toml
+[server]
+name = "Litodex Internationalis"
+domain = "litodex.org"
+tier = 3
+
+[capabilities]
+acts_enabled = false     # Cannot create content
+lid_issuance = true      # Can confirm global LIDs
+sync_enabled = true      # Sync with all Tier 2
+
+[peers]
+# All national bibliothecae
+tier2 = [
+  "https://bibliotheca.fr",
+  "https://bibliotheca.de",
+  "https://bibliotheca.it",
+  "https://bibliotheca.gr",
+  "https://bibliotheca.br",
+  "https://bibliotheca.in",
+  "https://bibliotheca.cn",
+  "https://bibliotheca.eg",
+  "https://bibliotheca.il",
+  # ... all others
+]
+
+[lid]
+# Global namespace (no prefix)
+namespace = "global"
+pattern = "{lang}/{author}-{work}"  # e.g., grc/homer-iliad
+
+[sync]
+# Pull from all Tier 2 every hour
+pull_interval = "1h"
+# Immediately flag conflicts
+conflict_detection = "immediate"
+# Never resolve conflicts automatically
+auto_resolve = false
+```
+
+### The Global Registry Data Model
+
+```json
+// What litodex.org stores per LID
+GET https://litodex.org/registry/grc/homer-iliad
+
+{
+  "global_lid": "grc/homer-iliad",
+  "canonical_name": "Homer, Iliad",
+  "language": "grc",
+  "registered": "2026-01-15T10:00:00Z",
+  "last_updated": "2026-03-04T15:30:00Z",
+  
+  "national_instances": [
+    {
+      "nation": "fr",
+      "national_lid": "fr.2026.0042",
+      "bibliotheca": "https://bibliotheca.fr",
+      "work_url": "https://bibliotheca.fr/grc/homer-iliad",
+      "editions": [
+        {
+          "id": "sorbonne-20250304",
+          "name": "Édition critique de l'Iliade",
+          "url": "https://bibliotheca.sorbonne.fr/grc/homer-iliad/ed/sorbonne/20250304"
+        }
+      ]
+    },
+    {
+      "nation": "de",
+      "national_lid": "de.2026.0087",
+      "bibliotheca": "https://bibliotheca.de",
+      "work_url": "https://bibliotheca.de/grc/homer-iliad",
+      "editions": [
+        {
+          "id": "hdbrw-20250215",
+          "name": "Heidelberger Homer-Ausgabe",
+          "url": "https://bibliotheca.uni-hd.de/grc/homer-iliad/ed/hdbrw/20250215"
+        }
+      ]
+    }
+  ],
+  
+  "global_consensus": null,  // Only if nations agree
+  "conflict_status": "none"
+}
+```
+
+---
+
+## The LID Issuance Flow
+
+```mermaid
+sequenceDiagram
+    participant Scholar
+    participant Sorbonne as Sorbonne (Tier 1)
+    participant FR as bibliotheca.fr (Tier 2)
+    participant INT as litodex.org (Tier 3)
+    
+    Scholar->>Sorbonne: Create codex for new work
+    Note over Sorbonne: Local identifier (temp)
+    
+    Scholar->>Sorbonne: Build consensus, create edition
+    Sorbonne->>FR: Push for national registration
+    
+    FR->>FR: Validate work is new to France
+    FR->>FR: Issue national LID: fr.2026.0042
+    
+    FR->>INT: Check if global LID exists
+    INT->>INT: Query registry
+    INT-->>FR: No conflict, grc/homer-iliad available
+    
+    FR->>INT: Register fr.2026.0042 as instance of grc/homer-iliad
+    INT->>INT: Create/confirm global LID: grc/homer-iliad
+    INT->>INT: Link: grc/homer-iliad ↔ fr.2026.0042
+    
+    INT-->>FR: Global LID confirmed
+    FR-->>Sorbonne: Registration complete
+    Sorbonne-->>Scholar: Your work is now: grc/homer-iliad
+    Note over Scholar: Can now cite permanently
+```
+
+---
+
+## Conflict Detection and Resolution
+
+The international bibliotheca's **only power** is to detect conflicts and notify the parties involved.
+
+### The Conflict Detector
+
+```python
+# litodex.org's entire core logic (simplified)
+
+class GlobalRegistry:
+    def __init__(self):
+        self.lids = {}  # global LID → list of national instances
+        self.reservations = set()  # LIDs being checked
+    
+    def check_conflict(self, global_lid, requesting_nation):
+        """Check if a global LID is available"""
+        if global_lid in self.lids:
+            # Already exists - return existing instances
+            return {
+                "status": "exists",
+                "instances": self.lids[global_lid],
+                "message": f"This LID is already registered. See existing instances above."
+            }
+        
+        # Not yet registered - reserve it briefly
+        self.reservations.add(global_lid)
+        return {
+            "status": "available",
+            "reservation": "valid for 24h",
+            "message": "LID available. Please complete registration within 24 hours."
+        }
+    
+    def register(self, global_lid, national_instance):
+        """Register a national instance under a global LID"""
+        if global_lid not in self.lids:
+            self.lids[global_lid] = []
+        
+        self.lids[global_lid].append(national_instance)
+        
+        # Notify all national bibliothecae of the new LID
+        self.broadcast_update(global_lid)
+        
+        return {
+            "status": "registered",
+            "global_lid": global_lid,
+            "message": f"Successfully registered. This LID now points to {len(self.lids[global_lid])} national instance(s)."
+        }
+```
+
+### Real Conflict Example
+
+```bash
+# Two nations try to register the same LID simultaneously
+$ litodex.org/logs/2026-03-04.log
+
+10:32:15 [CONFLICT] Detected simultaneous reservation
+  LID: "san/buddha-charita"
+  
+  Reservation 1: bibliotheca.in (India)
+    Work: "Life of Buddha by Ashvaghosha"
+    Evidence: "Critical edition based on Sanskrit manuscripts"
+  
+  Reservation 2: bibliotheca.cn (China)
+    Work: "Buddhacarita (Chinese canon version)"
+    Evidence: "Taisho Tripitaka edition with Chinese commentary"
+  
+  These appear to be different recensions of related but distinct texts.
+
+10:32:16 [ACTION] Notified both parties
+  To: bibliotheca.in, bibliotheca.cn
+  Subject: LID conflict: san/buddha-charita
+  
+  "Both of you have reserved this LID for what appear to be
+  different works. Please communicate and decide among yourselves:
+  
+  - One of you keeps the LID, the other chooses a different one
+  - You agree to share the LID with clear attribution
+  - You request hierarchical LIDs (e.g., san/buddha-charita/indian)
+  
+  litodex.org has no opinion. We await your consensus."
+
+10:48:03 [RESOLUTION] Received from both parties
+  "We have agreed:
+   - bibliotheca.in will use san/buddha-charita for the Sanskrit version
+   - bibliotheca.cn will use san/buddha-charita-chinese for the Chinese canon version
+   - Both LIDs will cross-reference each other in metadata"
+  
+  Registry updated.
+```
+
+---
+
+## Roles (Per Bibliotheca)
+
+Each bibliotheca maintains its own roles independently. A scholar may be a curator at their university, a custos at the national level, and have no role internationally.
+
+| Role | Latin | Responsibility | Level |
+|------|-------|----------------|-------|
+| **Curator** | *curator* | Maintains radix stemma (metadata) | Any |
+| **Custos** | *custos* | Facilitates consensus for a public stemma | Any |
+
+### Curator (at any level)
+
+The curator maintains the **radix** — the root stemma containing only `meta.toml`.
+
+```bash
+# At institutional level
+$ lit cur list --bibliotheca=bibliotheca.sorbonne.fr
 Curatores for grc/homer-iliad:
   @smith (since 2026-01-15)
   @jones (since 2026-02-20)
 
-$ lit cur add @patel
-Added @patel as curator. They can now maintain radix.
+# At national level (Tier 2, though acts disabled)
+$ lit cur list --bibliotheca=bibliotheca.fr
+Curatores for national metadata:
+  @dupont (Académie des Inscriptions)
+  @martin (Bibliothèque Nationale)
 ```
 
-### Custos
+### Custos (at any level)
 
-The **custos** (plural: **custodes**) does not decide — they **serve the consensus**. Their role is to facilitate discussion, monitor proposals, verify sources, and execute convergences when the community reaches agreement.
+The **custos** serves the consensus within their bibliotheca.
 
 ```bash
-$ lit cus list
+$ lit cus list --bibliotheca=bibliotheca.uni-hd.de
 Custodes for grc/homer-iliad:
-  @oxford_editor   → ed/iliad-oxford
-  @teubner_editor  → ed/iliad-teubner
-  @manuscript_scholar → ms/venetus-a
-
-$ lit cus add @cambridge_editor --stemma=ed/iliad-cambridge
-Added @cambridge_editor as custos of ed/iliad-cambridge.
+  @schmidt → ed/iliad-heidelberg
+  @weber → ms/venetus-a-diplomatic
 ```
 
-A custos:
-- Does not have unilateral convergence authority
-- Cannot override community consensus
-- Facilitates discussion and voting
-- **Verifies source integrity** before convergence
-- Executes convergences only when consensus thresholds are met
+---
 
-## Repository Structure
+## Repository Structure (Same at All Levels)
 
 Every codex follows this pattern:
 
@@ -93,69 +515,11 @@ Example: `grc/homer-iliad`
 | `rev/` | *recensio* | Review stemmata | ⚠️ Temporary |
 | `arch/` | *archivum* | Archived stemmata | 🔒 Read-only |
 
-### The Radix Stemma
-
-Every codex has a `radix` stemma containing a single `meta.toml` file:
-
-```toml
-[work]
-id = "grc/homer-iliad"
-title = "Iliad"
-author = "Homer"
-language = "grc"
-type = "poetry"
-
-# Optional
-period = "8th century BCE"
-description = "Ancient Greek epic poem"
-license = "public-domain"
-```
-
-The radix is:
-- Created at initialization, never deleted
-- Only editable by curators
-- Automatically converged into all other stemmata when changed
-- The source of truth for work identity
-
-```bash
-$ lit sm show radix
-Stemma: radix (PROTECTED)
-Type: root stemma
-Curators: @smith, @jones
-Contains: meta.toml only
-Acts: 3 (last: a1b2c3d "Updated description")
-Auto-converges to: all stemmata
-```
-
-## Public Stemmata: `ed/` and `ms/`
-
-### Definition
-
-| Stemma | Purpose | Example |
-|--------|---------|---------|
-| `ed/` | Published editions representing scholarly consensus | `ed/iliad-oxford` |
-| `ms/` | Diplomatic transcriptions of historical manuscripts | `ms/venetus-a` |
-
-Both follow the **same consensus-based workflow**. Neither exists until the community creates them through proposals.
-
-### The Proposal System
-
-Proposals use random 3-letter IDs to avoid implying priority or order:
-
-```
-prop/{target-stemma-name}-{random-id}
-```
-
-Examples:
-- `prop/iliad-oxford-xkm`
-- `prop/iliad-oxford-jqr`
-- `prop/venetus-a-plm`
-
-The random ID (consonant-vowel-consonant) ensures no proposal appears "first" or "more important."
+---
 
 ## The Source Requirement
 
-**Every act in a `prop/` stemma must be traceable to a source.** This creates an auditable chain of evidence from manuscript/image to final text. Sources are first-class citizens in the proposal system.
+**Every act in a `prop/` stemma must be traceable to a source.** This creates an auditable chain of evidence.
 
 ### Source Types
 
@@ -183,11 +547,11 @@ line = "12"
 image_url = "https://..."      # If digitized
 ```
 
-## The Consensus Workflow
+---
+
+## The Consensus Workflow (Tier 1)
 
 ### Phase 1: No Public Stemma Exists
-
-Initially, only `radix`, manuscripts (`ms/`), and personal stemmata exist:
 
 ```bash
 $ lit sm list
@@ -198,428 +562,128 @@ grc/homer-iliad:
   priv/smith-notes
   priv/jones-collation
   prop/iliad-oxford-xkm   (proposed Oxford edition)
-  prop/iliad-oxford-jqr   (another proposal)
-  prop/iliad-oxford-plm   (yet another)
 ```
 
-### Phase 2: Proposals Are Created with Sources
-
-Scholars create proposal stemmata with embedded source metadata:
+### Phase 2: Create Proposal with Sources
 
 ```bash
-# Create a proposal with source metadata
 $ lit prop create iliad-oxford-xkm \
   --target=ed/iliad-oxford \
   --source-type=digital \
   --source-url="https://archive.org/details/homeriilias00home" \
   --source-hash="sha256:def456..." \
-  --pipeline="litogramma-v1" \
-  --message="Base text from Archive.org scan, converted to Litogramma"
-
-# This creates a special annotated act that records source metadata
-# and branches from that act to create the proposal stemma
+  --message="Base text from Archive.org scan"
 ```
 
-Each proposal contains a `proposal.toml` at its root:
-
-```toml
-[proposal]
-id = "iliad-oxford-xkm"
-target = "ed/iliad-oxford"
-created = "2026-03-04T10:30:00Z"
-creator = "@smith"
-
-[proposal.initial_source]
-type = "digital"
-url = "https://archive.org/details/homeriilias00home"
-hash = "sha256:def456..."
-conversion = "litogramma-v1"
-verification_status = "verified"
-verified_by = "@smith"
-
-[proposal.goal]
-description = "Create a new Oxford edition based on public domain sources"
-scope = "Full text of Iliad with minimal apparatus"
-bases = ["ms/venetus-a", "ms/townley"]
-```
-
-### Phase 3: Building on a Proposal
-
-Subsequent acts must also cite sources:
+### Phase 3: Build Consensus
 
 ```bash
-# Make a change with source attribution
-$ lit act -m "Corrected accent in line 102" \
-  --source-type=print \
-  --source-citation="Monro (1897). Homer: Iliad I-XII. Oxford. p. 23" \
-  --source-mediator="@smith" \
-  --source-note="Monro discusses this crux"
+$ lit prop vote iliad-oxford-xkm --approve
+$ lit prop comment iliad-oxford-xkm -m "Evidence attached"
+$ lit consensus check iliad-oxford-xkm
+Consensus: 78% approve (threshold met)
 ```
 
-Each act can track multiple sources:
-
-```toml
-# In the proposal metadata, acts track their sources
-[[proposal.acts]]
-hash = "abc123..."
-message = "Corrected accent in line 102"
-sources = [
-    { type = "print", citation = "Monro (1897). Homer: Iliad I-XII. Oxford. p. 23", 
-      mediator = "@smith", note = "Monro discusses this crux" },
-    { type = "manuscript", identifier = "Venetus A", 
-      note = "Confirmed reading on folio 47r" }
-]
-rationale = "Manuscript evidence supports Monro's correction"
-```
-
-### Phase 4: Source Verification
-
-Digital sources can be automatically verified:
-
-```bash
-# Verify a digital source
-$ lit source verify https://archive.org/details/homeriilias00home \
-  --hash="sha256:def456..." \
-  --pipeline="litogramma-v1"
-
-Verifying source...
-Downloading... done
-Computing hash... matches (def456...)
-Converting to Litogramma... done
-Validation: 0 errors, 2 warnings
-  Warning: Line 47 missing verse number marker
-  Warning: Line 103 has ambiguous line break
-
-Source verified with warnings.
-```
-
-### Phase 5: Community Discussion and Voting
-
-Scholars discuss, provide evidence, and vote:
-
-```bash
-$ lit prop vote prop/iliad-oxford-xkm --approve --reason="Matches manuscript evidence"
-$ lit prop comment prop/iliad-oxford-xkm -m "See attached image of Venetus A folio 47r"
-
-$ lit prop vote prop/iliad-oxford-jqr --reject --reason="Needs stronger evidence"
-```
-
-### Phase 6: Custos Verifies and Converges
-
-When consensus is reached, the custos must verify all sources before converging:
-
-```bash
-$ lit consensus check prop/iliad-oxford-xkm --verify-sources
-Checking consensus... 78% approve (threshold met)
-Checking sources...
-
-Initial source: ✓ verified (hash matches)
-Act a1b2c3d: ✓ source verified (print citation accepted)
-Act e4f5g6h: ⚠️ manuscript image URL 404
-  → Requires verification from mediator
-
-Consensus met but source verification incomplete.
-Cannot converge until all sources are verified.
-```
-
-After verification:
+### Phase 4: Converge
 
 ```bash
 $ lit converge prop/iliad-oxford-xkm --into=ed/iliad-oxford
-Converging prop/iliad-oxford-xkm into ed/iliad-oxford
-Consensus confirmed: 78% approve (exceeds 70% threshold)
-All sources verified: 12 digital, 8 print, 3 manuscript
-Creating ed/iliad-oxford...
-Convergence complete.
-
-# A versio is automatically created with date suffix
-$ lit ver list
-ed/iliad-oxford/20250304   (first edition, includes xkm changes)
+Convergence complete. New versio: ed/iliad-oxford/20250304
 ```
 
-### Phase 7: Subsequent Corrections
-
-Later, another scholar proposes a correction with proper sourcing:
+### Phase 5: Push to National Level
 
 ```bash
-# Create from an existing versio
-$ lit prop create iliad-oxford-tyr \
-  --from=ed/iliad-oxford/20250304 \
-  --target=ed/iliad-oxford \
-  --message="Correct line 102 based on manuscript evidence"
-
-$ vim iliad.txt  # fix line 102
-$ lit act -m "Corrected accent in line 102" \
-  --source-type=manuscript \
-  --source-identifier="Venetus A" \
-  --source-folio="47r" \
-  --source-library="Marciana" \
-  --source-mediator="@smith"
-
-# Discussion, voting, verification, convergence...
-$ lit converge prop/iliad-oxford-tyr --into=ed/iliad-oxford
-Converged. New versio: ed/iliad-oxford/20250315
+$ lit push national --to=bibliotheca.fr
+Pushing ed/iliad-oxford/20250304 for national registration...
+Requesting LID from bibliotheca.fr...
+Received national LID: fr.2026.0042
+Global LID confirmed: grc/homer-iliad
 ```
 
-### The Versio Timeline
+---
+
+## The `lit` CLI (Extended for Federation)
+
+### Bibliotheca Management
 
 ```bash
-$ lit ver list --stemma=ed/iliad-oxford
-ed/iliad-oxford/20250304   (initial consensus edition)
-ed/iliad-oxford/20250315   (correction to line 102)
-ed/iliad-oxford/20250401   (added apparatus from jqr proposal)
-ed/iliad-oxford/20250420   (further corrections)
+# Configure your bibliotheca
+$ lit config set bibliotheca https://bibliotheca.sorbonne.fr
+$ lit config set national https://bibliotheca.fr
+
+# Show federation status
+$ lit federation status
+Your bibliotheca: bibliotheca.sorbonne.fr (Tier 1)
+National peer: bibliotheca.fr (Tier 2) - connected
+International peer: litodex.org (Tier 3) - connected via national
+
+# List all known bibliothecae
+$ lit federation list
+Tier 1 (operational):
+  - bibliotheca.sorbonne.fr
+  - bibliotheca.cnrs.fr
+  - bibliotheca.uni-hd.de
+  
+Tier 2 (national):
+  - bibliotheca.fr (peer)
+  - bibliotheca.de
+  - bibliotheca.it
+  
+Tier 3 (international):
+  - litodex.org (connected)
 ```
 
-Each versio is a frozen snapshot of community consensus at that point in time, with complete provenance tracking back to original sources.
-
-## The Custos Dashboard
+### Pushing to National Level
 
 ```bash
-$ lit custos dashboard --stemma=ed/iliad-oxford
-Custos dashboard for ed/iliad-oxford
+# Push an edition for national registration
+$ lit push national --stemma=ed/iliad-oxford --versio=20250304
+Pushing to bibliotheca.fr...
+Validation in progress...
+✓ Meets French scholarly standards
+✓ Sources verified (12/12)
+✓ Consensus documented
 
-Current version: ed/iliad-oxford/20250401
+Issued national LID: fr.2026.0042
+Checking global registry...
+Global LID confirmed: grc/homer-iliad
 
-Open proposals:
-  prop/iliad-oxford-tyr (92% approve, sources: 3/3 verified) → ready to converge
-  prop/iliad-oxford-wlm (63% approve, sources: 5/5 verified) → needs discussion
-  prop/iliad-oxford-zab (41% approve, sources: 2/4 verified) → weak support, missing sources
-
-Recent convergences:
-  2025-04-01: converged prop/iliad-oxford-jqr (apparatus)
-  2025-03-15: converged prop/iliad-oxford-tyr (line 102)
-  2025-03-04: created ed/iliad-oxford from 3 proposals
-
-Consensus threshold: 70% approve, all sources must be verified
+Your edition is now permanently citable as:
+  https://bibliotheca.fr/grc/homer-iliad/ed/oxford/20250304
+  Global LID: grc/homer-iliad
 ```
 
-## Source Registry
-
-Frequently used sources can be registered for reuse:
+### Resolving LIDs
 
 ```bash
-# Register a source
-$ lit source register \
-  --type=print \
-  --citation="West, M.L. (1998). Homerus: Ilias. Vol. I." \
-  --isbn="9783598714105" \
-  --notes="Standard critical edition"
+# Resolve a global LID
+$ lit resolve grc/homer-iliad
+Found 3 national instances:
 
-Registered as source: src/west-iliad-1998
+1. France (fr.2026.0042)
+   URL: https://bibliotheca.fr/grc/homer-iliad
+   Editions: oxford-20250304, cnrs-20250301
+   
+2. Germany (de.2026.0087)
+   URL: https://bibliotheca.de/grc/homer-iliad
+   Editions: heidelberg-20250215, leipzig-20250120
+   
+3. Greece (gr.2026.0012)
+   URL: https://bibliotheca.gr/grc/homer-iliad
+   Editions: athens-academy-20250301
 
-# Use registered source in proposal
-$ lit prop create iliad-oxford-xkm \
-  --source=src/west-iliad-1998 \
-  --pages="47-49"
+# Resolve a national LID  
+$ lit resolve fr.2026.0042
+National LID: fr.2026.0042
+Issued by: bibliotheca.fr
+Global LID: grc/homer-iliad
+Editions:
+  - https://bibliotheca.sorbonne.fr/grc/homer-iliad/ed/sorbonne/20250304
+  - https://bibliotheca.cnrs.fr/grc/homer-iliad/ed/cnrs/20250301
 ```
 
-## Viewing Proposal Sources
-
-```bash
-# Show all sources used in a proposal
-$ lit prop sources iliad-oxford-xkm
-Proposal: iliad-oxford-xkm
-Target: ed/iliad-oxford
-
-Initial source:
-  📄 Archive.org scan (digital)
-  URL: https://archive.org/details/homeriilias00home
-  Hash: sha256:def456... ✓ verified
-  Conversion: litogramma-v1
-
-Act a1b2c3d: "Corrected accent in line 102"
-  📚 Monro (1897), p. 23 (print)
-  Mediator: @smith
-  Note: "Monro discusses this reading"
-
-Act e4f5g6h: "Added apparatus note"
-  📜 Venetus A, fol. 47r (manuscript)
-  Mediator: @jones
-  Image: https://.../venetus-a/47r.jpg
-```
-
-## The Radix Auto-Convergence
-
-When curators update the radix:
-
-```bash
-$ lit sm checkout radix
-$ vim meta.toml
-$ lit act -m "Updated license to CC-BY"
-
-# Automatically converges to ALL stemmata
-$ lit act show a1b2c3d
-Actum: a1b2c3d
-Stemma: radix
-Message: "Updated license to CC-BY"
-
-Auto-converged to:
-  ✓ ed/iliad-oxford (convergence act e4f5g6h)
-  ✓ ed/iliad-teubner (convergence act i7j8k9l)
-  ✓ ms/venetus-a (convergence act m0n1o2p)
-  ✓ priv/smith-experimental (convergence act q3r4s5t)
-  ✓ ...
-```
-
-Metadata flows to all traditions automatically.
-
-## Permanent Identifiers (LIDs)
-
-Every versio gets a permanent, citable Litodex Identifier:
-
-```
-{lang}/{author}/{work}/{stemma}/{date}
-```
-
-Example: `grc/homer/iliad/ed/oxford-1920/20250304`
-
-Resolution:
-```
-https://lid.litodex.org/grc/homer/iliad/ed/oxford-1920/20250304
-```
-
-LIDs are stored as Git tags in `refs/tags/lid/` and are immutable.
-
-## The `lit` CLI
-
-### Codex Operations
-
-```bash
-# Initialize a new codex
-$ lit codex init grc/homer-iliad --author="Homer" --title="Iliad"
-Created codex grc/homer-iliad
-  radix stemma initialized with meta.toml
-
-# List all codices
-$ lit codex list
-
-# Show codex info
-$ lit codex show
-```
-
-### Daily Work
-
-```bash
-# List stemmata
-$ lit sm list
-stemmata in grc/homer-iliad:
-  radix
-  ms/venetus-a
-  priv/smith-experimental
-  prop/iliad-oxford-xkm
-
-# Create private stemma
-$ lit sm create priv/smith-experimental --from=ms/venetus-a
-
-# Switch stemma
-$ lit sm checkout priv/smith-experimental
-
-# Check status
-$ lit st
-Stemma: priv/smith-experimental
-Status: 1 unstaged change
-
-# Commit changes (private stemmata don't require sources)
-$ lit act -m "Collated lines 1-50"
-
-# View history
-$ lit hist
-a1b2c3d 2026-03-04 "Collated lines 1-50"
-e4f5g6h 2026-03-03 "Initial copy from Venetus A"
-```
-
-### Proposal Workflow
-
-```bash
-# Create a proposal with source
-$ lit prop create iliad-oxford-xkm \
-  --target=ed/iliad-oxford \
-  --source-type=digital \
-  --source-url="https://archive.org/details/homeriilias00home" \
-  --source-hash="sha256:def456..." \
-  --message="Base text from Archive.org"
-
-# Make a sourced change
-$ lit act -m "Corrected line 102" \
-  --source-type=print \
-  --source-citation="Monro (1897) p.23" \
-  --source-mediator="@smith"
-
-# Open for discussion
-$ lit prop open iliad-oxford-xkm
-
-# Vote on proposals
-$ lit prop vote iliad-oxford-xkm --approve
-$ lit prop comment iliad-oxford-xkm -m "Evidence attached"
-
-# Check consensus with source verification
-$ lit consensus check iliad-oxford-xkm --verify-sources
-
-# Converge (custos only)
-$ lit converge iliad-oxford-xkm --into=ed/iliad-oxford
-```
-
-### Source Management
-
-```bash
-# Register a source for reuse
-$ lit source register \
-  --type=print \
-  --citation="West, M.L. (1998). Homerus: Ilias." \
-  --isbn="9783598714105"
-
-# Verify a digital source
-$ lit source verify https://example.com/text.txt \
-  --hash="sha256:abc123..."
-
-# Show proposal sources
-$ lit prop sources iliad-oxford-xkm
-
-# Export sources as bibliography
-$ lit prop sources iliad-oxford-xkm --format=bibtex > sources.bib
-```
-
-### Working with Versiones
-
-```bash
-# List versiones
-$ lit ver list --stemma=ed/iliad-oxford
-ed/iliad-oxford/20250304
-ed/iliad-oxford/20250315
-
-# Show specific versio
-$ lit show grc/homer/iliad/ed/iliad-oxford/20250304 --verse=1.47
-
-# Compare versiones
-$ lit delta ed/iliad-oxford/20250304 ed/iliad-oxford/20250315 --verse=1.47
-
-# Cite versio
-$ lit cite grc/homer/iliad/ed/iliad-oxford/20250304 --format=bibtex
-```
-
-### Role Management
-
-```bash
-# List roles
-$ lit role list
-Codex: grc/homer-iliad
-
-Curatores (radix):
-  @smith
-  @jones
-
-Custodes (public stemmata):
-  @oxford_editor   → ed/iliad-oxford
-  @teubner_editor  → ed/iliad-teubner
-  @manuscript_scholar → ms/venetus-a
-
-# Add curator
-$ lit cur add @patel
-
-# Add custos
-$ lit cus add @cambridge_editor --stemma=ed/iliad-cambridge
-```
+---
 
 ## Integration with Litogram
 
@@ -628,39 +692,61 @@ Litodex provides the verified texts; Litogram provides the practice:
 ```typescript
 // litogram.org backend
 async function getText(lid: string) {
-    const { content, metadata, sources } = await fetch(`https://api.litodex.org/v1/resolve/${lid}`);
+    // Resolve LID through federation
+    const instances = await resolveLID(lid);
+    
+    // Prefer national instance or let user choose
+    const selected = await selectInstance(instances);
+    
+    const { content, metadata, sources } = await fetch(selected.url);
+    
     return {
         typing: strip_markup(content),      // 🌕 Full text
         memorizing: first_letters(content), // 🌗 First letters only
         reciting: blank_page(),              // 🌑 Blank page
         metadata,
-        sources: formatCitation(sources)     // "Source: West (1998), p. 47"
+        sources: formatCitation(sources),
+        citation: `${lid} (via ${selected.nation})`
     };
 }
 ```
 
-## Why Litodex?
+---
 
-- **For scholars**: Permanently citable versiones, consensus-driven workflow, manuscript tracking, **complete provenance**
-- **For students**: Verified texts with source attribution, Litogram integration, citation-ready
-- **For institutions**: Hosted collections, private repositories, custom branding, **auditable chains of custody**
-- **For humanity**: Preservation of cultural heritage with cryptographic provenance and scholarly rigor
+## Why This Architecture?
 
-## Source Verification Rules
+### For Scholars
+- Work at your institution with local authentication
+- National validation ensures quality
+- Global discovery through LIDs
+- Complete provenance tracking
 
-The system enforces:
+### For Institutions
+- Full control over your scholarship
+- No vendor lock-in — it's open source
+- Brand recognition (your own bibliotheca)
+- Teaching sandboxes without global pollution
 
-1. **Every act in a proposal must have at least one source** (purely metadata changes exempt)
-2. **Digital sources must have valid hashes** matching the content at creation time
-3. **Print sources must have a mediator** (someone taking responsibility)
-4. **Manuscript sources must include library/shelfmark** for identification
-5. **Sources cannot be changed** after an act is created (immutability)
-6. **All sources must be verified** before convergence to a public stemma
+### For Nations
+- Cultural sovereignty respected
+- Set your own validation standards
+- Preserve national scholarly traditions
+- Control what enters your bibliotheca
 
-## License
-
-Litodex core is open source under the MIT License. Content licenses are determined by contributors, with source attribution preserved forever.
+### For Humanity
+- No single point of failure or control
+- Multiple perspectives preserved
+- Resilient network of scholarship
+- Permanent, citable identifiers for all texts
 
 ---
 
-**One platform. One community. Infinite texts. Every change traceable to its source.**
+## License
+
+Litodex core is open source under the MIT License. Content licenses are determined by contributors at each bibliotheca, with source attribution preserved forever.
+
+---
+
+**One protocol. Sovereign nodes. Infinite texts. Every change traceable to its source.**
+
+**[Get Started](#) | [Federation Protocol Spec](#) | [Run a Bibliotheca](#) | [Community](#)**
