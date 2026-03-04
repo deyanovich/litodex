@@ -134,6 +134,28 @@ Pushing ed/iliad-sorbonne/20250304 to national bibliotheca...
 Requesting LID from bibliotheca.fr...
 ```
 
+Each bibliotheca chooses its own consensus model. The `[consensus]` block in the
+local configuration file describes how convergence decisions are made:
+
+```toml
+# Example: supermajority vote (the Sorbonne's chosen model)
+[consensus]
+model = "supermajority"
+threshold = 0.70          # 70% approval required
+
+# Alternative: a single designated authority (BDFL)
+# [consensus]
+# model = "bdfl"
+# authority = "@schmidt"
+
+# Alternative: unanimity — every participant must approve
+# [consensus]
+# model = "unanimity"
+```
+
+These are illustrative examples; bibliothecae are free to define the model that
+fits their scholarly community.
+
 ---
 
 ## Tier 2: National Bibliothecae
@@ -420,11 +442,10 @@ Custodes for grc/homer-iliad:
 ```
 
 A custos:
-- Does not have unilateral convergence authority
-- Cannot override community consensus
-- Facilitates discussion and voting
-- **Verifies source integrity** before convergence
-- Executes convergences only when consensus thresholds are met
+- Manages convergence according to the bibliotheca's own configured consensus model
+- Facilitates discussion and, where applicable, voting
+- **Verifies source integrity** before convergence (a Litodex-level requirement regardless of consensus model)
+- Executes convergences only when the bibliotheca's configured rules are satisfied
 
 #### The Custos Dashboard
 
@@ -444,7 +465,7 @@ Recent convergences:
   2025-03-15: converged prop/iliad-oxford-tyr (line 102)
   2025-03-04: created ed/iliad-oxford from 3 proposals
 
-Consensus threshold: 70% approve, all sources must be verified
+Consensus model: supermajority (70% approve, configured locally), all sources must be verified
 ```
 
 ## Repository Structure (Same at All Levels)
@@ -739,7 +760,7 @@ When consensus is reached, the custos must verify all sources before converging:
 
 ```bash
 $ lit consensus check prop/iliad-oxford-xkm --verify-sources
-Checking consensus... 78% approve (threshold met)
+Checking consensus... 78% approve (local threshold met: supermajority ≥70%)
 Checking sources...
 
 Initial source: ✓ verified (hash matches)
@@ -756,7 +777,7 @@ After verification:
 ```bash
 $ lit converge prop/iliad-oxford-xkm --into=ed/iliad-oxford
 Converging prop/iliad-oxford-xkm into ed/iliad-oxford
-Consensus confirmed: 78% approve (exceeds 70% threshold)
+Consensus confirmed: 78% approve (exceeds local threshold: supermajority ≥70%)
 All sources verified: 12 digital, 8 print, 3 manuscript
 Creating ed/iliad-oxford...
 Convergence complete.
