@@ -43,7 +43,7 @@ Example: `grc/homer-iliad`
 
 | Prefix | Latin | Purpose | Protection |
 |--------|-------|---------|------------|
-| `meta` | *meta* | Work metadata (single file) | 🔒 Owner only |
+| `radix` | *radix* | Work metadata (single file) | 🔒 Owner only |
 | `ed/` | *editio* | Public authoritative editions | 🔒 Maintainers |
 | `ms/` | *manuscriptum* | Source manuscripts | 🔒 Curators |
 | `collab/` | *collaboratio* | Group projects | 🔒 Team |
@@ -52,9 +52,9 @@ Example: `grc/homer-iliad`
 | `rev/` | *recensio* | Review stemmata | ⚠️ Temporary |
 | `arch/` | *archivum* | Archived stemmata | 🔒 Read-only |
 
-### The Meta Stemma
+### The Radix Stemma
 
-Every codex has a `meta` stemma containing a single `meta.toml` file:
+Every codex has a `radix` stemma containing a single `meta.toml` file:
 
 ```toml
 [work]
@@ -239,7 +239,7 @@ $ lit sm prune --merged
 ### Storage
 - **One Git repository per codex**
 - All stemmata (editions, manuscripts, personal) in same repo
-- `meta` stemma for work identity
+- `radix` stemma for work identity
 - LIDs stored as Git tags in `refs/tags/lid/` namespace
 
 ### Indexing (Optional, for performance)
@@ -289,7 +289,7 @@ graph TD
 
 | Prefix | Protected? | Who Can Push |
 |--------|------------|--------------|
-| `meta` | ✅ Yes | Repository owners only |
+| `radix` | ✅ Yes | Repository owners only |
 | `ed/` | ✅ Yes | Edition maintainers |
 | `ms/` | ✅ Yes | Manuscript curators |
 | `collab/` | ⚠️ Limited | Team members |
