@@ -5,23 +5,41 @@ Litodex is a platform for version-controlled, verified, and collaborative manage
 ## Core Philosophy
 
 - **One work = one repository** — not per edition, not per user
-- **Editions = branches** — multiple authoritative versions coexist
+- **Editions = stemmata** — multiple authoritative versions coexist
 - **No single master** — scholarship has no single source of truth
-- **Manuscripts are first-class** — `ms/` branches alongside editions
+- **Manuscripts are first-class** — `ms/` stemmata alongside editions
 - **Permanent identifiers** — every snapshot gets a citable LID
 - **Lightweight markup** — Litogramma annotations make parsing trivial
 
+## Core Terminology
+
+| Git | Litodex (Formal) | Litodex Alias | When to Use |
+|-----|------------------|---------------|-------------|
+| **repository** | codex | (none) | `lit codex init`, `lit codex list` |
+| **branch** | stemma | `sm` | Daily work: `lit sm list`, `lit sm checkout` |
+| **tag** | versio | `ver` | `lit ver create`, `lit ver list` |
+| **commit** | actum | `act` | `lit act -m "message"`, `lit act show` |
+| **log** | historia | `hist` | `lit hist`, `lit hist --stem=ed/oxford-1920` |
+| **diff** | delta | (none) | `lit delta ver/1.0.0 ver/1.0.1` |
+| **status** | status | `st` | `lit st` |
+
+### Why This Pattern
+
+- **Full words** for rare commands (`codex`, `delta`) — no alias needed
+- **Short aliases** for daily commands (`sm`, `ver`, `act`, `hist`, `st`) — speed where it matters
+- **Aliases are mnemonic** — `sm` = stemma, `ver` = versio, `act` = actum, `hist` = historia, `st` = status
+
 ## Repository Structure
 
-Every text repository follows this pattern:
+Every codex follows this pattern:
 
 ```
-{lang}/{author}-{work}.git
+{lang}/{author}-{work}
 ```
 
-Example: `grc/homer-iliad.git`
+Example: `grc/homer-iliad`
 
-### Branch Hierarchy
+### Stemma Hierarchy
 
 | Prefix | Latin | Purpose | Protection |
 |--------|-------|---------|------------|
@@ -31,12 +49,12 @@ Example: `grc/homer-iliad.git`
 | `collab/` | *collaboratio* | Group projects | 🔒 Team |
 | `priv/` | *privatus* | Personal workspace | ❌ Owner |
 | `prop/` | *propositum* | Proposed changes | ❌ Anyone |
-| `rev/` | *recensio* | Review branches | ⚠️ Temporary |
-| `arch/` | *archivum* | Archived branches | 🔒 Read-only |
+| `rev/` | *recensio* | Review stemmata | ⚠️ Temporary |
+| `arch/` | *archivum* | Archived stemmata | 🔒 Read-only |
 
-### The Meta Branch
+### The Meta Stemma
 
-Every repository has a `meta` branch containing a single `meta.toml` file:
+Every codex has a `meta` stemma containing a single `meta.toml` file:
 
 ```toml
 [work]
@@ -52,11 +70,25 @@ description = "Ancient Greek epic poem"
 license = "public-domain"
 ```
 
-This branch is created at initialization and never deleted. It establishes the work's identity independent of any content branch.
+This stemma is created at initialization and never deleted. It establishes the work's identity independent of any content stemma.
 
 ## Litogramma Markup
 
-(Atrep dialektos)
+Texts use lightweight, human-readable annotations:
+
+```
+## Venetus A manuscript
+
+μῆνιν ἄειδε θεὰ Πηληϊάδεω Ἀχιλῆος οὐλομένην,   // 1.1
+ἣ μυρί᾽ Ἀχαιοῖς ἄλγε᾽ ἔθηκε,                    // 1.2
+πολλὰς δ᾽ ἰφθίμους ψυχὰς Ἄϊδι προΐαψεν         // 1.3
+```
+
+- `##` — Headers (metadata, section breaks)
+- `// ref` — Line-level canonical references
+- Blank lines — Paragraph breaks
+
+This makes parsing trivial and eliminates heuristics.
 
 ## Permanent Identifiers (LIDs)
 
@@ -65,7 +97,7 @@ Every important snapshot gets a **Litodex Identifier** — a permanent, citable 
 ### Format
 
 ```
-{lang}/{author}/{work}/{branch}/{date}
+{lang}/{author}/{work}/{stemma}/{date}
 ```
 
 Example: `grc/homer/iliad/ed/oxford-1920/20250101`
@@ -76,7 +108,7 @@ Example: `grc/homer/iliad/ed/oxford-1920/20250101`
 https://lid.litodex.org/grc/homer/iliad/ed/oxford-1920/20250101
 ```
 
-Redirects to the exact commit snapshot. LIDs are stored as Git tags:
+Redirects to the exact actum snapshot. LIDs are stored as Git tags:
 
 ```
 refs/tags/lid/grc/homer/iliad/ed/oxford-1920/20250101
@@ -85,77 +117,89 @@ refs/tags/lid/grc/homer/iliad/ed/oxford-1920/20250101
 ### Creating a LID
 
 ```bash
-$ lit lid create --date=2025-01-01
+$ lit versio create --date=2025-01-01
 LID: grc/homer/iliad/ed/oxford-1920/20250101
 Permanent snapshot created.
 ```
 
 ## The `lit` CLI
 
-### Getting Started
+### Codex Operations (Rare)
 
 ```bash
-# Install
-curl -sSL https://litodex.org/install | bash
+# Initialize a new codex
+$ lit codex init grc/homer-iliad --author="Homer" --title="Iliad"
 
-# Initialize a new work
-$ lit init grc/homer-iliad --author="Homer" --title="Iliad"
+# List all codices
+$ lit codex list
 
-# Clone existing work
-$ lit clone litodex.org/grc/homer-iliad
-$ cd homer-iliad
+# Show codex info
+$ lit codex show
 ```
 
-### Daily Work
+### Daily Work (With Aliases)
 
 ```bash
-# See what's available
-$ lit branch --list
-  ed/oxford-1920
-  ed/teubner-1898
-  ms/venetus-a
+# List stemmata
+$ lit sm list
+stemmata in grc/homer-iliad:
+  ed/oxford-1920 (protected)
+  ed/teubner-1898 (protected)
+  ms/venetus-a (protected)
   priv/smith-experimental
 
-# Start working
-$ lit branch priv/smith-experimental --from=ed/oxford-1920
-$ lit checkout priv/smith-experimental
+# Create new stemma
+$ lit sm create priv/smith-experimental --from=ed/oxford-1920
 
-# Edit (using Litogramma markup)
-$ vim venetus-a.txt
+# Switch stemma
+$ lit sm checkout priv/smith-experimental
 
-# Commit
-$ lit commit -m "Correxi errorem in linea 47"
-$ lit push
+# Check status
+$ lit st
+Stemma: priv/smith-experimental
+Status: 1 unstaged change
+
+# Commit changes
+$ lit act -m "Correxi errorem in linea 47"
+
+# View history
+$ lit hist
+a1b2c3d 2026-03-04 "Correxi errorem in linea 47"
+e4f5g6h 2026-03-03 "Added apparatus to Book 1"
+
+# Compare versions
+$ lit delta ver/1.0.0 ver/1.0.1 --verse=1.47
+Δ at line 47:
+  ver/1.0.0: Ἀχιλῆος
+  ver/1.0.1: Ἀχιλλέως
+
+# Create a versio (frozen snapshot)
+$ lit ver create ver/1.0.0
 ```
 
 ### Proposing Changes
 
 ```bash
-# Create proposal branch
-$ lit branch prop/smith-1.47-correction --from=priv/smith-experimental
+# Create proposal stemma
+$ lit sm create prop/smith-1.47-correction --from=priv/smith-experimental
 $ lit push origin prop/smith-1.47-correction
 
 # Request merge
 $ lit request-merge prop/smith-1.47-correction --into=ed/oxford-1920
 ```
 
-### Working with Versions
+### Working with LIDs
 
 ```bash
-# List versions (LIDs)
-$ lit lid list
+# List versiones
+$ lit ver list
 grc/homer/iliad/ed/oxford-1920/20250101
 grc/homer/iliad/ed/oxford-1920/20250315
 
-# Show specific version
+# Show specific versio
 $ lit show grc/homer/iliad/ed/oxford-1920/20250101 --verse=1.47
 
-# Compare versions
-$ lit diff grc/homer/iliad/ed/oxford-1920/20250101 \
-           grc/homer/iliad/ed/oxford-1920/20250315 \
-           --verse=1.47
-
-# Cite version
+# Cite versio
 $ lit cite grc/homer/iliad/ed/oxford-1920/20250101 --format=bibtex
 ```
 
@@ -164,7 +208,7 @@ $ lit cite grc/homer/iliad/ed/oxford-1920/20250101 --format=bibtex
 ```bash
 # View work metadata
 $ lit meta
-Repository: grc/homer-iliad
+Codex: grc/homer-iliad
 Title: Iliad
 Author: Homer
 Language: grc (Ancient Greek)
@@ -174,29 +218,29 @@ Type: poetry
 $ lit meta edit --description="Updated description"
 ```
 
-### Branch Management
+### Stemma Management
 
 ```bash
-# List branches with details
-$ lit branch --list --verbose
-  ed/oxford-1920 (protected, 127 commits)
-  priv/smith-experimental (your workspace, 3 commits)
+# List stemmata with details
+$ lit sm list --verbose
+  ed/oxford-1920 (protected, 127 acta)
+  priv/smith-experimental (your workspace, 3 acta)
   prop/smith-1.47-correction (open proposal)
 
-# Archive old branches
-$ lit branch archive --older-than=1y --prefix=priv/
+# Archive old stemmata
+$ lit sm archive --older-than=1y --prefix=priv/
 
 # Clean up merged proposals
-$ lit branch prune --merged
+$ lit sm prune --merged
 ```
 
 ## Architecture
 
 ### Storage
-- **One Git repository per work**
-- All branches (editions, manuscripts, personal) in same repo
-- `meta` branch for work identity
-- LIDs stored as Git tags
+- **One Git repository per codex**
+- All stemmata (editions, manuscripts, personal) in same repo
+- `meta` stemma for work identity
+- LIDs stored as Git tags in `refs/tags/lid/` namespace
 
 ### Indexing (Optional, for performance)
 - SQLite index for fast semantic queries
@@ -219,13 +263,13 @@ $ lit branch prune --merged
 
 ```mermaid
 graph TD
-    A[Clone work] --> B[Create private branch]
+    A[Clone codex] --> B[Create private stemma]
     B --> C[Edit with Litogramma markup]
-    C --> D[Commit & push]
-    D --> E[Create proposal]
+    C --> D[Commit actum]
+    D --> E[Create proposal stemma]
     E --> F[Discussion & review]
     F --> G[Merge to edition]
-    G --> H[Create LID]
+    G --> H[Create versio/LID]
 ```
 
 ### For Students
@@ -237,28 +281,20 @@ graph TD
 ### For Publishers
 1. Prepare critical edition
 2. Upload to Litodex as `ed/publisher-year`
-3. Create LID
+3. Create versio/LID
 4. Include LID in print edition
 5. Readers access digital version
 
-## Community Guidelines
+## Branch Protection Rules
 
-### Branch Naming
-- `priv/username-description` — personal workspaces
-- `prop/username-description` — proposals
-- `collab/institution-project` — collaborative projects
-
-### Protection Rules
-- `ed/` branches require maintainer approval
-- `ms/` branches require curator verification
-- `meta` branch is immutable after work identity established
-- Private branches auto-archive after 1 year
-- Proposals auto-archive 3 months after merge/rejection
-
-### Abuse Prevention
-- Rate limiting: max 5 private branches per user per work
-- Automatic archiving of inactive branches
-- Manual pruning for abuse (reversible)
+| Prefix | Protected? | Who Can Push |
+|--------|------------|--------------|
+| `meta` | ✅ Yes | Repository owners only |
+| `ed/` | ✅ Yes | Edition maintainers |
+| `ms/` | ✅ Yes | Manuscript curators |
+| `collab/` | ⚠️ Limited | Team members |
+| `priv/` | ❌ No | Owner only |
+| `prop/` | ❌ No | Anyone (creates discussion) |
 
 ## Integration with Litogram
 
@@ -277,22 +313,9 @@ async function getText(lid: string) {
 }
 ```
 
-## Comparison with Git
-
-| Git Concept | Litodex Concept |
-|-------------|-----------------|
-| `master` branch | (none — hidden) |
-| Branch | Edition or manuscript |
-| Tag | LID (permanent snapshot) |
-| Fork | Private branch |
-| Pull request | Proposal branch |
-| Merge | Scholarly synthesis |
-| Commit | Version |
-| Remote | Another repository |
-
 ## Why Litodex?
 
-- **For scholars**: Permanently citable versions, collaborative workflows, manuscript tracking
+- **For scholars**: Permanently citable versiones, collaborative workflows, manuscript tracking
 - **For students**: Verified texts, Litogram integration, citation-ready
 - **For institutions**: Hosted collections, private repositories, custom branding
 - **For humanity**: Preservation of cultural heritage with cryptographic provenance
