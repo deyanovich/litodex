@@ -2,6 +2,19 @@
 
 Litodex is a platform for version-controlled, verified, and collaborative management of literary and sacred texts. It provides permanent identifiers, scholarly workflows, and a foundation for applications like the Litogram typing practice app.
 
+## System
+
+The Litodex system is a combination of:
+- Git: standard source control
+- Litogramma: markup language achieving two things:
+  - adapting Git's line-based atomicity to humanities for easy diffing
+  - providing a canonical form suitable for deterministic hashing
+- A workflow system with a tiered, federated distributed nodes called "bibliothecae" designed to produce authoritative, community consensus-based, versions of texts, substantiated by sourcing evidence
+
+The Litodex system consists of two applications:
+1. `lit`, ("humanities git") a thin layer over git, with an adapted terminology and enforced branch-naming, tagging, and merging restrictions
+2. `litodex`, ("humanities GitHub", but open source and federated), a server with user management, GPG signature manamgement, and workflows
+
 ## Core Philosophy
 
 - **One work = one codex** — not per edition, not per user
@@ -490,7 +503,12 @@ Custodes for grc/homer-iliad:
   @weber → ms/venetus-a-diplomatic
 ```
 
----
+A custos:
+- Does not have unilateral convergence authority
+- Cannot override community consensus
+- Facilitates discussion and voting
+- **Verifies source integrity** before convergence
+- Executes convergences only when consensus thresholds are met
 
 ## Repository Structure (Same at All Levels)
 
@@ -515,7 +533,65 @@ Example: `grc/homer-iliad`
 | `rev/` | *recensio* | Review stemmata | ⚠️ Temporary |
 | `arch/` | *archivum* | Archived stemmata | 🔒 Read-only |
 
----
+### The Radix Stemma
+
+Every codex has a `radix` stemma containing a single `meta.toml` file:
+
+```toml
+[work]
+id = "grc/homer-iliad"
+title = "Iliad"
+author = "Homer"
+language = "grc"
+type = "poetry"
+
+# Optional
+period = "8th century BCE"
+description = "Ancient Greek epic poem"
+license = "public-domain"
+```
+
+The radix is:
+- Created at initialization, never deleted
+- Only editable by curators
+- Automatically converged into all other stemmata when changed
+- The source of truth for work identity
+
+```bash
+$ lit sm show radix
+Stemma: radix (PROTECTED)
+Type: root stemma
+Curators: @smith, @jones
+Contains: meta.toml only
+Acts: 3 (last: a1b2c3d "Updated description")
+Auto-converges to: all stemmata
+```
+
+## Public Stemmata: `ed/` and `ms/`
+
+### Definition
+
+| Stemma | Purpose | Example |
+|--------|---------|---------|
+| `ed/` | Published editions representing scholarly consensus | `ed/iliad-oxford` |
+| `ms/` | Diplomatic transcriptions of historical manuscripts | `ms/venetus-a` |
+
+Both follow the **same consensus-based workflow**. Neither exists until the community creates them through proposals.
+
+### The Proposal System
+
+Proposals use random 3-letter IDs to avoid implying priority or order:
+
+```
+prop/{target-stemma-name}-{random-id}
+```
+
+Examples:
+- `prop/iliad-oxford-xkm`
+- `prop/iliad-oxford-jqr`
+- `prop/venetus-a-plm`
+
+The random ID (consonant-vowel-consonant) ensures no proposal appears "first" or "more important."
 
 ## The Source Requirement
 
@@ -553,6 +629,8 @@ image_url = "https://..."      # If digitized
 
 ### Phase 1: No Public Stemma Exists
 
+Initially, only `radix`, manuscripts (`ms/`), and personal stemmata exist:
+
 ```bash
 $ lit sm list
 grc/homer-iliad:
@@ -562,26 +640,264 @@ grc/homer-iliad:
   priv/smith-notes
   priv/jones-collation
   prop/iliad-oxford-xkm   (proposed Oxford edition)
+  prop/iliad-oxford-jqr   (another proposal)
+  prop/iliad-oxford-plm   (yet another)
 ```
 
 ### Phase 2: Create Proposal with Sources
 
+Scholars create proposal stemmata with embedded source metadata:
+
 ```bash
+# Create a proposal with source metadata
 $ lit prop create iliad-oxford-xkm \
   --target=ed/iliad-oxford \
   --source-type=digital \
   --source-url="https://archive.org/details/homeriilias00home" \
   --source-hash="sha256:def456..." \
-  --message="Base text from Archive.org scan"
+  --pipeline="litogramma-v1" \
+  --message="Base text from Archive.org scan, converted to Litogramma"
+
+# This creates a special annotated act that records source metadata
+# and branches from that act to create the proposal stemma
 ```
 
+Each proposal contains a `proposal.toml` at its root:
+
+```toml
+[proposal]
+id = "iliad-oxford-xkm"
+target = "ed/iliad-oxford"
+created = "2026-03-04T10:30:00Z"
+creator = "@smith"
+
+[proposal.initial_source]
+type = "digital"
+url = "https://archive.org/details/homeriilias00home"
+hash = "sha256:def456..."
+conversion = "litogramma-v1"
+verification_status = "verified"
+verified_by = "@smith"
+
+[proposal.goal]
+description = "Create a new Oxford edition based on public domain sources"
+scope = "Full text of Iliad with minimal apparatus"
+bases = ["ms/venetus-a", "ms/townley"]
+```
+
+### Phase 3: Building on a Proposal
+
+Subsequent acts must also cite sources:
+
+```bash
+# Make a change with source attribution
+$ lit act -m "Corrected accent in line 102" \
+  --source-type=print \
+  --source-citation="Monro (1897). Homer: Iliad I-XII. Oxford. p. 23" \
+  --source-mediator="@smith" \
+  --source-note="Monro discusses this crux"
+```
+
+Each act can track multiple sources:
+
+```toml
+# In the proposal metadata, acts track their sources
+[[proposal.acts]]
+hash = "abc123..."
+message = "Corrected accent in line 102"
+sources = [
+    { type = "print", citation = "Monro (1897). Homer: Iliad I-XII. Oxford. p. 23", 
+      mediator = "@smith", note = "Monro discusses this crux" },
+    { type = "manuscript", identifier = "Venetus A", 
+      note = "Confirmed reading on folio 47r" }
+]
+rationale = "Manuscript evidence supports Monro's correction"
+```
+
+## Viewing Proposal Sources
+
+```bash
+# Show all sources used in a proposal
+$ lit prop sources iliad-oxford-xkm
+Proposal: iliad-oxford-xkm
+Target: ed/iliad-oxford
+
+Initial source:
+  📄 Archive.org scan (digital)
+  URL: https://archive.org/details/homeriilias00home
+  Hash: sha256:def456... ✓ verified
+  Conversion: litogramma-v1
+
+Act a1b2c3d: "Corrected accent in line 102"
+  📚 Monro (1897), p. 23 (print)
+  Mediator: @smith
+  Note: "Monro discusses this reading"
+
+Act e4f5g6h: "Added apparatus note"
+  📜 Venetus A, fol. 47r (manuscript)
+  Mediator: @jones
+  Image: https://.../venetus-a/47r.jpg
+```
+
+## The Radix Auto-Convergence
+
+When curators update the radix:
+
+```bash
+$ lit sm checkout radix
+$ vim meta.toml
+$ lit act -m "Updated license to CC-BY"
+
+# Automatically converges to ALL stemmata
+$ lit act show a1b2c3d
+Actum: a1b2c3d
+Stemma: radix
+Message: "Updated license to CC-BY"
+
+Auto-converged to:
+  ✓ ed/iliad-oxford (convergence act e4f5g6h)
+  ✓ ed/iliad-teubner (convergence act i7j8k9l)
+  ✓ ms/venetus-a (convergence act m0n1o2p)
+  ✓ priv/smith-experimental (convergence act q3r4s5t)
+  ✓ ...
+```
+
+Metadata flows to all traditions automatically.
+
+### Phase 4: Source Verification
+
+Digital sources can be automatically verified:
+
+```bash
+# Verify a digital source
+$ lit source verify https://archive.org/details/homeriilias00home \
+  --hash="sha256:def456..." \
+  --pipeline="litogramma-v1"
+
+Verifying source...
+Downloading... done
+Computing hash... matches (def456...)
+Converting to Litogramma... done
+Validation: 0 errors, 2 warnings
+  Warning: Line 47 missing verse number marker
+  Warning: Line 103 has ambiguous line break
+
+Source verified with warnings.
+```
+
+### Phase 5: Community Discussion and Voting
+
+Scholars discuss, provide evidence, and vote:
+
+```bash
+$ lit prop vote prop/iliad-oxford-xkm --approve --reason="Matches manuscript evidence"
+$ lit prop comment prop/iliad-oxford-xkm -m "See attached image of Venetus A folio 47r"
+
+$ lit prop vote prop/iliad-oxford-jqr --reject --reason="Needs stronger evidence"
+```
+
+### Phase 6: Custos Verifies and Converges
+
+When consensus is reached, the custos must verify all sources before converging:
+
+```bash
+$ lit consensus check prop/iliad-oxford-xkm --verify-sources
+Checking consensus... 78% approve (threshold met)
+Checking sources...
+
+Initial source: ✓ verified (hash matches)
+Act a1b2c3d: ✓ source verified (print citation accepted)
+Act e4f5g6h: ⚠️ manuscript image URL 404
+  → Requires verification from mediator
+
+Consensus met but source verification incomplete.
+Cannot converge until all sources are verified.
+```
+
+After verification:
+
+```bash
+$ lit converge prop/iliad-oxford-xkm --into=ed/iliad-oxford
+Converging prop/iliad-oxford-xkm into ed/iliad-oxford
+Consensus confirmed: 78% approve (exceeds 70% threshold)
+All sources verified: 12 digital, 8 print, 3 manuscript
+Creating ed/iliad-oxford...
+Convergence complete.
+
+# A versio is automatically created with date suffix
+$ lit ver list
+ed/iliad-oxford/20250304   (first edition, includes xkm changes)
+```
+
+### Phase 7: Subsequent Corrections
+
+Later, another scholar proposes a correction with proper sourcing:
+
+```bash
+# Create from an existing versio
+$ lit prop create iliad-oxford-tyr \
+  --from=ed/iliad-oxford/20250304 \
+  --target=ed/iliad-oxford \
+  --message="Correct line 102 based on manuscript evidence"
+
+$ vim iliad.txt  # fix line 102
+$ lit act -m "Corrected accent in line 102" \
+  --source-type=manuscript \
+  --source-identifier="Venetus A" \
+  --source-folio="47r" \
+  --source-library="Marciana" \
+  --source-mediator="@smith"
+
+# Discussion, voting, verification, convergence...
+$ lit converge prop/iliad-oxford-tyr --into=ed/iliad-oxford
+Converged. New versio: ed/iliad-oxford/20250315
+```
+
+### The Versio Timeline
+
+```bash
+$ lit ver list --stemma=ed/iliad-oxford
+ed/iliad-oxford/20250304   (initial consensus edition)
+ed/iliad-oxford/20250315   (correction to line 102)
+ed/iliad-oxford/20250401   (added apparatus from jqr proposal)
+ed/iliad-oxford/20250420   (further corrections)
+```
+
+Each versio is a frozen snapshot of community consensus at that point in time, with complete provenance tracking back to original sources.
+
+## The Custos Dashboard
+
+```bash
+$ lit custos dashboard --stemma=ed/iliad-oxford
+Custos dashboard for ed/iliad-oxford
+
+Current version: ed/iliad-oxford/20250401
+
+Open proposals:
+  prop/iliad-oxford-tyr (92% approve, sources: 3/3 verified) → ready to converge
+  prop/iliad-oxford-wlm (63% approve, sources: 5/5 verified) → needs discussion
+  prop/iliad-oxford-zab (41% approve, sources: 2/4 verified) → weak support, missing sources
+
+Recent convergences:
+  2025-04-01: converged prop/iliad-oxford-jqr (apparatus)
+  2025-03-15: converged prop/iliad-oxford-tyr (line 102)
+  2025-03-04: created ed/iliad-oxford from 3 proposals
+
+Consensus threshold: 70% approve, all sources must be verified
+```
+
+
 ### Phase 3: Build Consensus
+
+Subsequent acts must also cite sources:
 
 ```bash
 $ lit prop vote iliad-oxford-xkm --approve
 $ lit prop comment iliad-oxford-xkm -m "Evidence attached"
 $ lit consensus check iliad-oxford-xkm
 Consensus: 78% approve (threshold met)
+  --source-mediator="@smith" \
+  --source-note="Monro discusses this crux"
 ```
 
 ### Phase 4: Converge
